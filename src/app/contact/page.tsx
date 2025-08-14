@@ -15,7 +15,7 @@ export default function ContactPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Mensaje enviado con éxito 🚀');
+    alert('Mensaje enviado con éxito');
     // Aquí iría la lógica real de envío
     setFormData({ nombre: '', email: '', mensaje: '' });
   };

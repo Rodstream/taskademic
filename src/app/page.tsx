@@ -3,42 +3,67 @@ import Link from 'next/link';
 export default function HomePage() {
   return (
     <main style={styles.container}>
-      {/* Hero principal */}
+      {/* Hero */}
       <section style={styles.hero}>
-        <h1 style={styles.heroTitle}>Tu vida académica. Más simple.</h1>
+        <span style={styles.tagline}>Taskademic</span>
+        <h1 style={styles.heroTitle}>Organizá tu vida académica como nunca antes</h1>
         <p style={styles.heroSubtitle}>
-          Con Taskademic, organizá tus trabajos, proyectos y grupos de estudio en un solo lugar. Eficiencia, claridad y control en cada materia.
+          Unificá tus tareas, proyectos y sesiones de estudio en un solo lugar. Medí tu rendimiento y alcanzá tus metas con foco y claridad.
         </p>
         <div style={styles.buttonGroup}>
-          <Link href="/about" style={styles.primaryButton}>Conocé más</Link>
-          <Link href="/contact" style={styles.secondaryButton}>Contacto</Link>
+          <Link href="/tasks" style={styles.primaryButton}>Comenzar ahora</Link>
+          <Link href="/about" style={styles.secondaryButton}>Saber más</Link>
         </div>
       </section>
 
-      {/* Beneficios clave */}
+      {/* Features */}
       <section style={styles.section}>
         <h2 style={styles.sectionTitle}>¿Por qué elegir Taskademic?</h2>
         <div style={styles.features}>
           <div style={styles.featureCard}>
             <h3 style={styles.featureTitle}>📚 Organización total</h3>
-            <p style={styles.featureText}>Tené control absoluto de entregas, tareas y proyectos con una interfaz simple y efectiva.</p>
+            <p style={styles.featureText}>
+              Gestioná tareas, proyectos y entregas con una interfaz clara y eficiente.
+            </p>
           </div>
           <div style={styles.featureCard}>
-            <h3 style={styles.featureTitle}>🤝 Trabajo en equipo</h3>
-            <p style={styles.featureText}>Gestioná tus grupos de estudio, asigná tareas y hacé seguimiento colaborativo de avances.</p>
+            <h3 style={styles.featureTitle}>⏱️ Pomodoro integrado</h3>
+            <p style={styles.featureText}>
+              Planificá sesiones de estudio con descansos programados y seguimiento de tiempo.
+            </p>
           </div>
           <div style={styles.featureCard}>
-            <h3 style={styles.featureTitle}>🎓 Pensado para estudiantes</h3>
-            <p style={styles.featureText}>Diseñado desde cero por y para estudiantes universitarios y terciarios.</p>
+            <h3 style={styles.featureTitle}>📊 Panel de rendimiento</h3>
+            <p style={styles.featureText}>
+              Analizá tu progreso con métricas de productividad y hábitos de estudio.
+            </p>
           </div>
         </div>
       </section>
 
-      {/* Cierre con llamado a la acción */}
+      {/* Stats */}
+      <section style={styles.stats}>
+        <div style={styles.statCard}>
+          <h3 style={styles.statNumber}>+1.2k</h3>
+          <p style={styles.statLabel}>Tareas completadas</p>
+        </div>
+        <div style={styles.statCard}>
+          <h3 style={styles.statNumber}>92%</h3>
+          <p style={styles.statLabel}>Foco promedio</p>
+        </div>
+        <div style={styles.statCard}>
+          <h3 style={styles.statNumber}>25 min</h3>
+          <p style={styles.statLabel}>Pomodoro ideal</p>
+        </div>
+      </section>
+
+      {/* CTA final */}
       <section style={styles.cta}>
-        <h2 style={styles.ctaTitle}>Empezá a usar Taskademic hoy</h2>
-        <p style={styles.ctaText}>Organizate como un profesional. No pierdas más tiempo entre carpetas, correos y recordatorios sueltos.</p>
-        <Link href="/contact" style={styles.ctaButton}>Contactanos</Link>
+        <h2 style={styles.ctaTitle}>Listo para tu mejor cuatrimestre</h2>
+        <p style={styles.ctaText}>
+          Empezá hoy mismo y llevá tu organización académica al siguiente nivel.
+        </p>
+        <Link href="/contact" style={styles.ctaButton}>Empezar gratis</Link>
       </section>
     </main>
   );
@@ -46,69 +71,79 @@ export default function HomePage() {
 
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
-    padding: '3rem 2rem',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, sans-serif',
-    backgroundColor: '#ffffff',
+    padding: '0',
+    fontFamily: 'system-ui, sans-serif',
+    backgroundColor: '#fff',
+    color: '#210440'
+  },
+  tagline: {
+    display: 'inline-block',
+    backgroundColor: 'rgba(87,184,123,0.15)',
+    color: '#57b87b',
+    padding: '0.4rem 0.8rem',
+    borderRadius: '999px',
+    fontWeight: 600,
+    fontSize: '0.9rem',
+    marginBottom: '1rem'
   },
   hero: {
     textAlign: 'center',
-    padding: '4rem 1rem',
-    maxWidth: '800px',
+    padding: '5rem 1.5rem 4rem',
+    maxWidth: '900px',
     margin: '0 auto',
   },
   heroTitle: {
     fontSize: '3rem',
-    fontWeight: 700,
-    color: '#210440',
+    fontWeight: 800,
     marginBottom: '1rem',
+    lineHeight: 1.2
   },
   heroSubtitle: {
     fontSize: '1.25rem',
-    color: '#444',
+    color: '#555',
     marginBottom: '2rem',
     lineHeight: 1.6,
+    maxWidth: '700px',
+    marginInline: 'auto'
   },
   buttonGroup: {
     display: 'flex',
     justifyContent: 'center',
     gap: '1rem',
-    flexWrap: 'wrap',
+    flexWrap: 'wrap'
   },
   primaryButton: {
     backgroundColor: '#57b87b',
     color: '#fff',
-    padding: '0.9rem 1.5rem',
-    borderRadius: '6px',
+    padding: '0.9rem 1.6rem',
+    borderRadius: '8px',
     textDecoration: 'none',
-    fontWeight: 500,
-    fontSize: '1rem',
-    transition: 'background-color 0.2s ease',
+    fontWeight: 600,
+    fontSize: '1rem'
   },
   secondaryButton: {
     backgroundColor: '#eeeeee',
     color: '#333',
-    padding: '0.9rem 1.5rem',
-    borderRadius: '6px',
+    padding: '0.9rem 1.6rem',
+    borderRadius: '8px',
     textDecoration: 'none',
     fontWeight: 500,
-    fontSize: '1rem',
-    transition: 'background-color 0.2s ease',
+    fontSize: '1rem'
   },
   section: {
     padding: '4rem 1rem',
-    backgroundColor: '#f9fdfb',
+    backgroundColor: '#f9fdfb'
   },
   sectionTitle: {
     textAlign: 'center',
     fontSize: '2rem',
-    marginBottom: '3rem',
-    color: '#210440',
+    marginBottom: '3rem'
   },
   features: {
     display: 'flex',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: '2rem',
+    gap: '2rem'
   },
   featureCard: {
     backgroundColor: '#fff',
@@ -116,42 +151,64 @@ const styles: { [key: string]: React.CSSProperties } = {
     boxShadow: '0 4px 8px rgba(0,0,0,0.06)',
     padding: '2rem',
     width: '300px',
-    textAlign: 'center',
+    textAlign: 'center'
   },
   featureTitle: {
     fontSize: '1.2rem',
     marginBottom: '1rem',
-    color: '#4CAF50',
+    color: '#4CAF50'
   },
   featureText: {
     fontSize: '1rem',
     color: '#555',
-    lineHeight: 1.6,
+    lineHeight: 1.6
+  },
+  stats: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: '2rem',
+    padding: '3rem 1rem',
+    flexWrap: 'wrap',
+    backgroundColor: '#fff'
+  },
+  statCard: {
+    backgroundColor: '#f3fdf7',
+    padding: '1.5rem',
+    borderRadius: '12px',
+    textAlign: 'center',
+    minWidth: '150px'
+  },
+  statNumber: {
+    fontSize: '2rem',
+    fontWeight: 700,
+    marginBottom: '0.5rem',
+    color: '#210440'
+  },
+  statLabel: {
+    color: '#555',
+    fontSize: '0.95rem'
   },
   cta: {
     backgroundColor: '#e6f5ec',
     textAlign: 'center',
-    padding: '4rem 1rem',
-    marginTop: '4rem',
+    padding: '4rem 1rem'
   },
   ctaTitle: {
     fontSize: '2rem',
-    marginBottom: '1rem',
-    color: '#210440',
+    marginBottom: '1rem'
   },
   ctaText: {
     fontSize: '1.1rem',
     marginBottom: '2rem',
-    color: '#444',
+    color: '#444'
   },
   ctaButton: {
     backgroundColor: '#57b87b',
     color: '#fff',
     padding: '1rem 2rem',
-    borderRadius: '6px',
+    borderRadius: '8px',
     textDecoration: 'none',
-    fontWeight: 500,
-    fontSize: '1rem',
-    transition: 'background-color 0.2s ease',
-  },
+    fontWeight: 600,
+    fontSize: '1rem'
+  }
 };
