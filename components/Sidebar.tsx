@@ -1,4 +1,5 @@
 'use client';
+import { useAuth } from '@/context/AuthContext';
 
 import { FaChartBar } from 'react-icons/fa'; // ícono sugerido
 import { FaClock } from 'react-icons/fa';
@@ -10,11 +11,13 @@ import {
   FaHome,
   FaInfoCircle,
   FaClipboardList,
-  FaEnvelope
+  FaEnvelope,
+  FaSignOutAlt,   // 👈 importamos el ícono de logout
 } from 'react-icons/fa';
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const { logout } = useAuth(); // 👈 usamos el logout del contexto
 
   return (
     <div className={`sidebar-wrapper ${collapsed ? 'hidden' : ''}`}>
@@ -50,10 +53,9 @@ export default function Sidebar() {
             </Link>
           </li>
           <li>       
-           <Link href="/tasks">
+           <Link href="/tasks">…</Link>
              <span className="icon"><FaClipboardList /></span>
              <span>Tareas</span>
-           </Link>
           </li>
           <li>
             <Link href="/pomodoro">
@@ -72,6 +74,29 @@ export default function Sidebar() {
              <span className="icon"><FaInfoCircle /></span>
              <span>About</span>
             </Link>
+          </li>
+
+          {/* 🔽 Botón de logout */}
+          <li>
+            <button
+              onClick={logout}
+              className="logout-btn"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: 'none',
+                border: 'none',
+                color: 'inherit',
+                cursor: 'pointer',
+                padding: '0.5rem 1rem',
+                width: '100%',
+                textAlign: 'left'
+              }}
+            >
+              <span className="icon"><FaSignOutAlt /></span>
+              <span>Cerrar sesión</span>
+            </button>
           </li>
         </ul>
       </nav>
