@@ -9,22 +9,60 @@ export default function UserProfile() {
 
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
+  const [descripcion, setDescripcion] = useState('');      // << nuevo
   const [password, setPassword] = useState('');
   const [mensaje, setMensaje] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   // Prefill con datos del usuario logueado
   useEffect(() => {
-    if (user) {
-      setNombre(user.name || '');
-      setEmail(user.email);
-    }
-  }, [user]);
+  if (user) {
+    setNombre(user.name || "");
+    setEmail(user.email);
+
+    // Si viene una descripción desde el backend, úsala; si no, cadena vacía
+    const desc = (user as any)?.description;
+    setDescripcion(typeof desc === "string" ? desc : "");
+  }
+}, [user]);
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Aquí luego conectamos a un PATCH /api/profile para actualizar nombre/contraseña
-    setMensaje('Perfil actualizado con éxito.');
-    setTimeout(() => setMensaje(''), 2500);
+    setMensaje('');
+    setError(null);
+    setSaving(true);
+
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: nombre.trim(),
+          description: descripcion.trim(),
+          // mandar password solo si se escribió algo
+          password: password.trim() || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data?.error ?? 'No se pudo actualizar el perfil.');
+        setSaving(false);
+        return;
+      }
+
+      // Limpia password localmente por seguridad
+      setPassword('');
+      setMensaje('Perfil actualizado con éxito.');
+      setTimeout(() => setMensaje(''), 2500);
+    } catch {
+      setError('Error de red al actualizar el perfil.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -86,6 +124,22 @@ export default function UserProfile() {
             </div>
           )}
 
+          {error && (
+            <div
+              role="alert"
+              style={{
+                backgroundColor: '#fdecea',
+                color: '#721c24',
+                padding: '0.75rem 1rem',
+                borderRadius: 6,
+                marginBottom: '1rem',
+                border: '1px solid #f5c6cb',
+              }}
+            >
+              {error}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <input
               type="text"
@@ -104,6 +158,14 @@ export default function UserProfile() {
               style={{ ...inputStyle, background: '#f5f7f6', cursor: 'not-allowed' as const }}
             />
 
+            {/* Nueva: descripción del perfil */}
+            <textarea
+              placeholder="Descripción del perfil"
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              style={{ ...inputStyle, minHeight: 90, resize: 'vertical' as const }}
+            />
+
             <input
               type="password"
               placeholder="Nueva contraseña (opcional)"
@@ -112,8 +174,8 @@ export default function UserProfile() {
               style={inputStyle}
             />
 
-            <button type="submit" style={buttonStyle}>
-              Actualizar perfil
+            <button type="submit" style={buttonStyle} disabled={saving}>
+              {saving ? 'Guardando…' : 'Actualizar perfil'}
             </button>
           </form>
 

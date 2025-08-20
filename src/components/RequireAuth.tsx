@@ -1,19 +1,22 @@
-'use client';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
+"use client";
+import React, { useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { usePathname, useRouter } from "next/navigation";
 
 export default function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { token, ready } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
-    if (!ready) return;       // todavía leyendo localStorage
-    if (!token) router.replace('/login');
-  }, [ready, token, router]);
+    if (!loading && !user) {
+      const next = encodeURIComponent(pathname || "/");
+      router.replace(`/login?next=${next}`);
+    }
+  }, [loading, user, router, pathname]);
 
-  if (!ready) return null;    // o un spinner
-  if (!token) return null;    // mientras redirige
+  if (loading) return <div style={{ padding: 24 }}>Cargando…</div>;
+  if (!user) return null; // se está redirigiendo
 
   return <>{children}</>;
 }

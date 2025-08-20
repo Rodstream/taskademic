@@ -1,9 +1,5 @@
 'use client';
 import { useAuth } from '@/context/AuthContext';
-
-import { FaChartBar } from 'react-icons/fa'; // ícono sugerido
-import { FaClock } from 'react-icons/fa';
-import { FaUser } from 'react-icons/fa';
 import { useState } from 'react';
 import Link from 'next/link';
 import {
@@ -12,92 +8,114 @@ import {
   FaInfoCircle,
   FaClipboardList,
   FaEnvelope,
-  FaSignOutAlt,   // 👈 importamos el ícono de logout
+  FaChartBar,
+  FaClock,
+  FaUser,
+  FaSignOutAlt,
 } from 'react-icons/fa';
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
-  const { logout } = useAuth(); // 👈 usamos el logout del contexto
+  const { user, logout } = useAuth(); // ← se usa user para decidir si mostrar el logout
+
+  const itemStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '0.65rem 1rem',
+    lineHeight: 1.2,
+    width: '100%',
+  };
+
+  const iconStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 22,
+    height: 22,
+  };
 
   return (
     <div className={`sidebar-wrapper ${collapsed ? 'hidden' : ''}`}>
       <nav className="sidebar">
         <div className="sidebar-header">
-          <h2></h2>
           <button
             className="toggle-btn"
             onClick={() => setCollapsed(!collapsed)}
             aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+            title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
           >
             <FaBars />
           </button>
         </div>
 
         <ul>
-          <li>        
-           <Link href="/">
-             <span className="icon"><FaHome /></span>
-              <span>Inicio</span>
-           </Link>
-          </li>
           <li>
-            <Link href="/profile">
-              <span className="icon"><FaUser /></span>
-              <span>Perfil</span>
-            </Link>
-          </li>
-          <li>
-            <Link href="/performance">
-              <span className="icon"><FaChartBar /></span>
-              <span>Rendimiento</span>
-            </Link>
-          </li>
-          <li>       
-           <Link href="/tasks">…</Link>
-             <span className="icon"><FaClipboardList /></span>
-             <span>Tareas</span>
-          </li>
-          <li>
-            <Link href="/pomodoro">
-              <span className="icon"><FaClock /></span>
-              <span>Pomodoro</span>
-            </Link>
-          </li>
-          <li>
-           <Link href="/contact">
-              <span className="icon"><FaEnvelope /></span>
-              <span>Contacto</span>
-           </Link>
-          </li>
-          <li>        
-           <Link href="/about">
-             <span className="icon"><FaInfoCircle /></span>
-             <span>About</span>
+            <Link href="/" style={itemStyle} aria-label="Inicio">
+              <span className="icon" style={iconStyle}><FaHome /></span>
+              {!collapsed && <span>Inicio</span>}
             </Link>
           </li>
 
-          {/* 🔽 Botón de logout */}
           <li>
-            <button
-              onClick={logout}
-              className="logout-btn"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: 'none',
-                border: 'none',
-                color: 'inherit',
-                cursor: 'pointer',
-                padding: '0.5rem 1rem',
-                width: '100%',
-                textAlign: 'left'
-              }}
-            >
-              <span className="icon"><FaSignOutAlt /></span>
-              <span>Cerrar sesión</span>
-            </button>
+            <Link href="/profile" style={itemStyle} aria-label="Perfil">
+              <span className="icon" style={iconStyle}><FaUser /></span>
+              {!collapsed && <span>Perfil</span>}
+            </Link>
           </li>
+
+          <li>
+            <Link href="/performance" style={itemStyle} aria-label="Rendimiento">
+              <span className="icon" style={iconStyle}><FaChartBar /></span>
+              {!collapsed && <span>Rendimiento</span>}
+            </Link>
+          </li>
+
+          <li>
+            <Link href="/tasks" style={itemStyle} aria-label="Tareas">
+              <span className="icon" style={iconStyle}><FaClipboardList /></span>
+              {!collapsed && <span>Tareas</span>}
+            </Link>
+          </li>
+
+          <li>
+            <Link href="/pomodoro" style={itemStyle} aria-label="Pomodoro">
+              <span className="icon" style={iconStyle}><FaClock /></span>
+              {!collapsed && <span>Pomodoro</span>}
+            </Link>
+          </li>
+
+          <li>
+            <Link href="/contact" style={itemStyle} aria-label="Contacto">
+              <span className="icon" style={iconStyle}><FaEnvelope /></span>
+              {!collapsed && <span>Contacto</span>}
+            </Link>
+          </li>
+
+          <li>
+            <Link href="/about" style={itemStyle} aria-label="About">
+              <span className="icon" style={iconStyle}><FaInfoCircle /></span>
+              {!collapsed && <span>About</span>}
+            </Link>
+          </li>
+
+          {/* Cerrar sesión solo si hay usuario autenticado */}
+          {user && (
+            <li>
+              <Link
+                href="#"
+                style={itemStyle}
+                aria-label="Cerrar sesión"
+                onClick={(e) => {
+                  e.preventDefault();
+                  logout();
+                }}
+              >
+                <span className="icon" style={iconStyle}><FaSignOutAlt /></span>
+                {!collapsed && <span>Cerrar sesión</span>}
+              </Link>
+            </li>
+          )}
         </ul>
       </nav>
     </div>

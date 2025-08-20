@@ -8,38 +8,21 @@ export async function POST(req: Request) {
     const { email, password } = await req.json();
 
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      return NextResponse.json({ error: "Credenciales inválidas" }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: "Credenciales inválidas" }, { status: 401 });
 
-    // ── Ajuste robusto del nombre del campo de hash ─────────────────────────────
-    // Adapta automáticamente si tu columna se llama passwordHash / hashedPassword / password
+    // Ajuste robusto por nombre de campo
     const hash: string | undefined =
-      (user as any).passwordHash ??
-      (user as any).hashedPassword ??
-      (user as any).password;
-
-    if (!hash || typeof hash !== "string") {
-      // Si llega acá, tu schema no tiene un campo de hash esperado
-      return NextResponse.json(
-        { error: "Configuración de contraseña inválida en el usuario" },
-        { status: 500 }
-      );
-    }
+      (user as any).passwordHash ?? (user as any).hashedPassword ?? (user as any).password;
+    if (!hash) return NextResponse.json({ error: "Config. de contraseña inválida" }, { status: 500 });
 
     const ok = await bcrypt.compare(password, hash);
-    if (!ok) {
-      return NextResponse.json({ error: "Credenciales inválidas" }, { status: 401 });
-    }
-    // ───────────────────────────────────────────────────────────────────────────
+    if (!ok) return NextResponse.json({ error: "Credenciales inválidas" }, { status: 401 });
 
     const token = signUserJWT({ id: user.id, email: user.email });
-
     const res = NextResponse.json({
-      ok: true,
-      user: { id: user.id, email: user.email },
+      user: { id: user.id, email: user.email, name: (user as any).name ?? null },
     });
-    attachSessionCookie(res, token); // cookie httpOnly
+    attachSessionCookie(res, token); // setea cookie httpOnly
     return res;
   } catch {
     return NextResponse.json({ error: "Error en login" }, { status: 500 });

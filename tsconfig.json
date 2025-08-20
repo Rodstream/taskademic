@@ -14,10 +14,10 @@
     "jsx": "preserve",
     "incremental": true,
     "plugins": [{ "name": "next" }],
-    "baseUrl": ".",                            // ← agregar
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@/lib/*": ["./lib/*"]                   // ← mapea lib en la raíz
+      "@/lib/*": ["./lib/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
