@@ -14,6 +14,7 @@ const links = [
   { href: '/pomodoro', label: 'Pomodoro', requiresAuth: true },
   { href: '/performance', label: 'Rendimiento', requiresAuth: true },
   { href: '/calendar', label: 'Calendario', requiresAuth: true },
+  { href: '/courses', label: 'Materias', requiresAuth: true },
   { href: '/profile', label: 'Perfil', requiresAuth: true },
 ];
 

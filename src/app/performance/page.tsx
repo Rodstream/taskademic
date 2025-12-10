@@ -180,6 +180,92 @@ export default function PerformancePage() {
     return points;
   }, [sessions]);
 
+  // Logros (Achievements)
+  const achievements = useMemo(() => {
+    const list: {
+      id: string;
+      name: string;
+      description: string;
+      achieved: boolean;
+    }[] = [];
+
+    const totalSessions = sessions.length;
+    const totalMinutes = stats.totalMinutesFocus;
+    const streak = stats.weekStreak;
+    const tasksCompleted = stats.tasksCompleted;
+
+    // Pomodoro
+    list.push({
+      id: 'first-pomodoro',
+      name: 'Primer ciclo',
+      description: 'Completar al menos un ciclo de Pomodoro.',
+      achieved: totalSessions >= 1,
+    });
+
+    list.push({
+      id: 'five-pomodoros-day',
+      name: 'Día intenso',
+      description: 'Completar 5 o más ciclos de Pomodoro en un mismo día.',
+      achieved: (() => {
+        const byDate = new Map<string, number>();
+        sessions.forEach((s) => {
+          const day = s.started_at.slice(0, 10);
+          byDate.set(day, (byDate.get(day) ?? 0) + 1);
+        });
+        return Array.from(byDate.values()).some((count) => count >= 5);
+      })(),
+    });
+
+    // Tiempo total
+    list.push({
+      id: 'hundred-minutes',
+      name: 'Calentando motores',
+      description: 'Acumular al menos 100 minutos de enfoque.',
+      achieved: totalMinutes >= 100,
+    });
+
+    list.push({
+      id: 'five-hundred-minutes',
+      name: 'Sesiones prolongadas',
+      description: 'Acumular al menos 500 minutos de enfoque.',
+      achieved: totalMinutes >= 500,
+    });
+
+    // Tareas
+    list.push({
+      id: 'first-task-completed',
+      name: 'Primera tarea completada',
+      description: 'Marcar como completada al menos una tarea.',
+      achieved: tasksCompleted >= 1,
+    });
+
+    list.push({
+      id: 'ten-tasks-completed',
+      name: 'Constancia en las entregas',
+      description: 'Completar al menos 10 tareas.',
+      achieved: tasksCompleted >= 10,
+    });
+
+    // Racha
+    list.push({
+      id: 'three-day-streak',
+      name: 'Racha de 3 días',
+      description:
+        'Registrar al menos una sesión de Pomodoro durante 3 días consecutivos.',
+      achieved: streak >= 3,
+    });
+
+    list.push({
+      id: 'seven-day-streak',
+      name: 'Racha de 7 días',
+      description:
+        'Registrar al menos una sesión de Pomodoro durante 7 días consecutivos.',
+      achieved: streak >= 7,
+    });
+
+    return list;
+  }, [sessions, stats]);
+
   if (loading || (!user && !loading)) {
     return (
       <main className="flex items-center justify-center min-h-screen">
@@ -309,9 +395,47 @@ export default function PerformancePage() {
                 incorporen).
               </li>
               <li>
-                Incorporar logros según rachas y objetivos cumplidos.
+                Extender el sistema de logros con objetivos personalizados.
               </li>
             </ul>
+          </section>
+
+          {/* Logros */}
+          <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] mt-6">
+            <h2 className="text-sm font-semibold mb-2">Logros</h2>
+            {achievements.length === 0 ? (
+              <p className="text-sm text-gray-400">
+                Aún no hay logros definidos.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                {achievements.map((a) => (
+                  <div
+                    key={a.id}
+                    className={`border rounded-md p-3 ${
+                      a.achieved
+                        ? 'border-[var(--success)] bg-[var(--success)]/10'
+                        : 'border-[var(--card-border)] opacity-70'
+                    }`}
+                  >
+                    <p className="font-semibold mb-1">{a.name}</p>
+                    <p className="text-xs text-gray-300 mb-2">
+                      {a.description}
+                    </p>
+                    <p className="text-[11px] font-medium">
+                      Estado:{' '}
+                      <span
+                        className={
+                          a.achieved ? 'text-[var(--success)]' : 'text-gray-400'
+                        }
+                      >
+                        {a.achieved ? 'Completado' : 'Pendiente'}
+                      </span>
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         </>
       )}

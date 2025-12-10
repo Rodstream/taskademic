@@ -15,10 +15,18 @@ type Task = {
   due_date: string | null; // YYYY-MM-DD
   completed: boolean;
   created_at: string;
+  course_id: string | null;
 };
 
 type TaskWithStats = Task & {
   focusMinutes: number; // minutos acumulados de Pomodoro para esta tarea
+};
+
+type Course = {
+  id: string;
+  user_id: string;
+  name: string;
+  color: string | null;
 };
 
 type Filter = 'all' | 'pending' | 'completed';
@@ -30,12 +38,18 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<TaskWithStats[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
 
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(true);
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [newTaskCourseId, setNewTaskCourseId] = useState<string>('none');
+
   const [error, setError] = useState<string | null>(null);
 
   const [filter, setFilter] = useState<Filter>('all');
+  const [filterCourseId, setFilterCourseId] = useState<string>('all');
 
   // estados para confirmaciones
   const [taskToDelete, setTaskToDelete] = useState<TaskWithStats | null>(null);
@@ -45,10 +59,13 @@ export default function TasksPage() {
   const [clearing, setClearing] = useState(false);
 
   // estados para edición
-  const [taskBeingEdited, setTaskBeingEdited] = useState<TaskWithStats | null>(null);
+  const [taskBeingEdited, setTaskBeingEdited] = useState<TaskWithStats | null>(
+    null,
+  );
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
+  const [editCourseId, setEditCourseId] = useState<string>('none');
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Proteger ruta
@@ -58,6 +75,30 @@ export default function TasksPage() {
     }
   }, [loading, user, router]);
 
+  // Cargar materias
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchCourses = async () => {
+      setLoadingCourses(true);
+      const { data, error } = await supabaseClient
+        .from('courses')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error(error);
+        setError('No se pudieron cargar las materias.');
+      } else {
+        setCourses((data ?? []) as Course[]);
+      }
+      setLoadingCourses(false);
+    };
+
+    fetchCourses();
+  }, [user]);
+
   // Cargar tareas + minutos de Pomodoro por tarea
   useEffect(() => {
     if (!user) return;
@@ -66,7 +107,6 @@ export default function TasksPage() {
       setLoadingTasks(true);
       setError(null);
 
-      // 1) Traer tareas del usuario
       const { data: tasksData, error: tasksError } = await supabaseClient
         .from('tasks')
         .select('*')
@@ -82,7 +122,6 @@ export default function TasksPage() {
 
       const baseTasks = (tasksData ?? []) as Task[];
 
-      // 2) Traer sesiones de Pomodoro agrupables por task_id
       const { data: sessionsData, error: sessionsError } = await supabaseClient
         .from('pomodoro_sessions')
         .select('task_id, duration_minutes')
@@ -91,7 +130,6 @@ export default function TasksPage() {
 
       if (sessionsError) {
         console.error(sessionsError);
-        // se continúa igual, con focusMinutes = 0
       }
 
       const minutesByTask = new Map<string, number>();
@@ -120,6 +158,11 @@ export default function TasksPage() {
 
     setError(null);
 
+    const courseIdToSave =
+      newTaskCourseId && newTaskCourseId !== 'none'
+        ? newTaskCourseId
+        : null;
+
     const { data, error } = await supabaseClient
       .from('tasks')
       .insert({
@@ -127,6 +170,7 @@ export default function TasksPage() {
         title,
         description: description || null,
         due_date: dueDate || null,
+        course_id: courseIdToSave,
       })
       .select('*')
       .single();
@@ -142,6 +186,7 @@ export default function TasksPage() {
     setTitle('');
     setDescription('');
     setDueDate('');
+    setNewTaskCourseId('none');
   };
 
   const toggleCompleted = async (task: TaskWithStats) => {
@@ -163,9 +208,30 @@ export default function TasksPage() {
 
     setTasks((prev) =>
       prev.map((t) =>
-        t.id === task.id ? { ...updated, focusMinutes: task.focusMinutes } : t,
+        t.id === task.id
+          ? { ...updated, focusMinutes: task.focusMinutes }
+          : t,
       ),
     );
+  };
+
+  // Helpers materias
+  const courseMap = useMemo(
+    () =>
+      new Map(
+        courses.map((c) => [
+          c.id,
+          { name: c.name, color: c.color },
+        ]),
+      ),
+    [courses],
+  );
+
+  const getCourseLabel = (courseId: string | null) => {
+    if (!courseId) return null;
+    const c = courseMap.get(courseId);
+    if (!c) return null;
+    return c;
   };
 
   // ---- Edición de tarea ----
@@ -174,6 +240,7 @@ export default function TasksPage() {
     setEditTitle(task.title);
     setEditDescription(task.description ?? '');
     setEditDueDate(task.due_date ?? '');
+    setEditCourseId(task.course_id ?? 'none');
     setError(null);
   };
 
@@ -188,6 +255,11 @@ export default function TasksPage() {
       return;
     }
 
+    const courseIdToSave =
+      editCourseId && editCourseId !== 'none'
+        ? editCourseId
+        : null;
+
     setSavingEdit(true);
     const { data, error } = await supabaseClient
       .from('tasks')
@@ -195,6 +267,7 @@ export default function TasksPage() {
         title: editTitle.trim(),
         description: editDescription.trim() || null,
         due_date: editDueDate || null,
+        course_id: courseIdToSave,
       })
       .eq('id', taskBeingEdited.id)
       .eq('user_id', user.id)
@@ -320,11 +393,14 @@ export default function TasksPage() {
   // Aplicar filtro
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
-      if (filter === 'pending') return !t.completed;
-      if (filter === 'completed') return t.completed;
+      if (filter === 'pending' && t.completed) return false;
+      if (filter === 'completed' && !t.completed) return false;
+      if (filterCourseId !== 'all') {
+        if (!t.course_id || t.course_id !== filterCourseId) return false;
+      }
       return true;
     });
-  }, [tasks, filter]);
+  }, [tasks, filter, filterCourseId]);
 
   if (loading || (!user && !loading)) {
     return (
@@ -380,6 +456,23 @@ export default function TasksPage() {
                 />
               </label>
 
+              <label className="flex items-center gap-2">
+                <span>Materia:</span>
+                <select
+                  className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                  value={newTaskCourseId}
+                  onChange={(e) => setNewTaskCourseId(e.target.value)}
+                  disabled={loadingCourses}
+                >
+                  <option value="none">Sin materia</option>
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <button
                 type="submit"
                 className="px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--foreground)] text-sm font-semibold"
@@ -432,7 +525,24 @@ export default function TasksPage() {
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2">
+              <span>Materia:</span>
+              <select
+                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-[var(--card-bg)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                value={filterCourseId}
+                onChange={(e) => setFilterCourseId(e.target.value)}
+                disabled={loadingCourses}
+              >
+                <option value="all">Todas</option>
+                {courses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             <p className="text-gray-400">
               {tasks.filter((t) => !t.completed).length} pendientes ·{' '}
               {tasks.filter((t) => t.completed).length} completadas
@@ -474,6 +584,8 @@ export default function TasksPage() {
                   ? 'bg-[var(--success)]/15 text-[var(--success)] border border-[var(--success)]/40'
                   : 'bg-gray-400/10 text-gray-300 border border-gray-500/30';
 
+              const course = getCourseLabel(task.course_id);
+
               return (
                 <li
                   key={task.id}
@@ -487,7 +599,7 @@ export default function TasksPage() {
                       className="mt-1"
                     />
                     <div>
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
                         <p
                           className={`font-medium text-sm ${
                             task.completed ? 'line-through opacity-60' : ''
@@ -500,6 +612,18 @@ export default function TasksPage() {
                         >
                           {status.label}
                         </span>
+                        {course && (
+                          <span
+                            className="px-2 py-0.5 rounded-full text-[10px] border border-[var(--card-border)]"
+                            style={{
+                              backgroundColor: course.color
+                                ? `${course.color}33`
+                                : undefined,
+                            }}
+                          >
+                            {course.name}
+                          </span>
+                        )}
                       </div>
 
                       {task.description && (
@@ -615,6 +739,23 @@ export default function TasksPage() {
                 value={editDueDate}
                 onChange={(e) => setEditDueDate(e.target.value)}
               />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm">
+              <span>Materia</span>
+              <select
+                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                value={editCourseId}
+                onChange={(e) => setEditCourseId(e.target.value)}
+                disabled={loadingCourses}
+              >
+                <option value="none">Sin materia</option>
+                {courses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
         }
