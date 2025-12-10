@@ -7,6 +7,8 @@ import { supabaseClient } from '@/lib/supabaseClient';
 import { useAuth } from '@/context/AuthContext';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 
+type Priority = 'low' | 'medium' | 'high';
+
 type Task = {
   id: string;
   user_id: string;
@@ -16,6 +18,8 @@ type Task = {
   completed: boolean;
   created_at: string;
   course_id: string | null;
+  priority: Priority | null;
+  tags: string | null;
 };
 
 type TaskWithStats = Task & {
@@ -30,6 +34,7 @@ type Course = {
 };
 
 type Filter = 'all' | 'pending' | 'completed';
+type PriorityFilter = 'all' | Priority;
 
 export default function TasksPage() {
   const { user, loading } = useAuth();
@@ -41,18 +46,27 @@ export default function TasksPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
 
+  // Campos nueva tarea
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [newTaskCourseId, setNewTaskCourseId] = useState<string>('none');
+  const [newTaskPriority, setNewTaskPriority] =
+    useState<Priority>('medium');
+  const [newTaskTags, setNewTaskTags] = useState('');
 
   const [error, setError] = useState<string | null>(null);
 
+  // Filtros
   const [filter, setFilter] = useState<Filter>('all');
   const [filterCourseId, setFilterCourseId] = useState<string>('all');
+  const [filterPriority, setFilterPriority] =
+    useState<PriorityFilter>('all');
 
   // estados para confirmaciones
-  const [taskToDelete, setTaskToDelete] = useState<TaskWithStats | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<TaskWithStats | null>(
+    null,
+  );
   const [deleting, setDeleting] = useState(false);
 
   const [showClearCompleted, setShowClearCompleted] = useState(false);
@@ -66,6 +80,9 @@ export default function TasksPage() {
   const [editDescription, setEditDescription] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
   const [editCourseId, setEditCourseId] = useState<string>('none');
+  const [editPriority, setEditPriority] =
+    useState<Priority>('medium');
+  const [editTags, setEditTags] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Proteger ruta
@@ -152,6 +169,7 @@ export default function TasksPage() {
     fetchTasksAndStats();
   }, [user]);
 
+  // Crear nueva tarea
   const handleAddTask = async (e: FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -163,6 +181,9 @@ export default function TasksPage() {
         ? newTaskCourseId
         : null;
 
+    const tagsToSave =
+      newTaskTags.trim().length > 0 ? newTaskTags.trim() : null;
+
     const { data, error } = await supabaseClient
       .from('tasks')
       .insert({
@@ -171,6 +192,8 @@ export default function TasksPage() {
         description: description || null,
         due_date: dueDate || null,
         course_id: courseIdToSave,
+        priority: newTaskPriority,
+        tags: tagsToSave,
       })
       .select('*')
       .single();
@@ -187,6 +210,8 @@ export default function TasksPage() {
     setDescription('');
     setDueDate('');
     setNewTaskCourseId('none');
+    setNewTaskPriority('medium');
+    setNewTaskTags('');
   };
 
   const toggleCompleted = async (task: TaskWithStats) => {
@@ -241,6 +266,8 @@ export default function TasksPage() {
     setEditDescription(task.description ?? '');
     setEditDueDate(task.due_date ?? '');
     setEditCourseId(task.course_id ?? 'none');
+    setEditPriority(task.priority ?? 'medium');
+    setEditTags(task.tags ?? '');
     setError(null);
   };
 
@@ -260,6 +287,9 @@ export default function TasksPage() {
         ? editCourseId
         : null;
 
+    const tagsToSave =
+      editTags.trim().length > 0 ? editTags.trim() : null;
+
     setSavingEdit(true);
     const { data, error } = await supabaseClient
       .from('tasks')
@@ -268,6 +298,8 @@ export default function TasksPage() {
         description: editDescription.trim() || null,
         due_date: editDueDate || null,
         course_id: courseIdToSave,
+        priority: editPriority,
+        tags: tagsToSave,
       })
       .eq('id', taskBeingEdited.id)
       .eq('user_id', user.id)
@@ -390,17 +422,50 @@ export default function TasksPage() {
     return { label: 'Próxima', tone: 'ok' };
   };
 
+  const getPriorityLabel = (p: Priority | null): string => {
+    const value = p ?? 'medium';
+    if (value === 'high') return 'Alta';
+    if (value === 'low') return 'Baja';
+    return 'Media';
+  };
+
+  const getPriorityClass = (p: Priority | null): string => {
+    const value = p ?? 'medium';
+    if (value === 'high') {
+      return 'bg-[var(--danger)]/15 text-[var(--danger)] border border-[var(--danger)]/40';
+    }
+    if (value === 'low') {
+      return 'bg-[var(--success)]/15 text-[var(--success)] border border-[var(--success)]/40';
+    }
+    return 'bg-[var(--warn)]/15 text-[var(--warn)] border border-[var(--warn)]/40';
+  };
+
+  const parseTags = (tags: string | null): string[] => {
+    if (!tags) return [];
+    return tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+  };
+
   // Aplicar filtro
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
       if (filter === 'pending' && t.completed) return false;
       if (filter === 'completed' && !t.completed) return false;
+
       if (filterCourseId !== 'all') {
         if (!t.course_id || t.course_id !== filterCourseId) return false;
       }
+
+      if (filterPriority !== 'all') {
+        const p = (t.priority ?? 'medium') as Priority;
+        if (p !== filterPriority) return false;
+      }
+
       return true;
     });
-  }, [tasks, filter, filterCourseId]);
+  }, [tasks, filter, filterCourseId, filterPriority]);
 
   if (loading || (!user && !loading)) {
     return (
@@ -473,17 +538,45 @@ export default function TasksPage() {
                 </select>
               </label>
 
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--foreground)] text-sm font-semibold"
-              >
-                Agregar
-              </button>
+              <label className="flex items-center gap-2">
+                <span>Prioridad:</span>
+                <select
+                  className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                  value={newTaskPriority}
+                  onChange={(e) =>
+                    setNewTaskPriority(e.target.value as Priority)
+                  }
+                >
+                  <option value="high">Alta</option>
+                  <option value="medium">Media</option>
+                  <option value="low">Baja</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="flex flex-col gap-1 text-sm">
+              <label className="flex flex-col gap-1">
+                <span>Etiquetas (separadas por coma)</span>
+                <input
+                  type="text"
+                  className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                  value={newTaskTags}
+                  onChange={(e) => setNewTaskTags(e.target.value)}
+                  placeholder="Ejemplo: parcial, tp, final"
+                />
+              </label>
             </div>
 
             {error && (
               <p className="text-xs text-red-400">{error}</p>
             )}
+
+            <button
+              type="submit"
+              className="self-start px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--foreground)] text-sm font-semibold"
+            >
+              Agregar
+            </button>
           </form>
         </section>
 
@@ -543,6 +636,24 @@ export default function TasksPage() {
               </select>
             </label>
 
+            <label className="flex items-center gap-2">
+              <span>Prioridad:</span>
+              <select
+                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-[var(--card-bg)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                value={filterPriority}
+                onChange={(e) =>
+                  setFilterPriority(
+                    e.target.value as PriorityFilter,
+                  )
+                }
+              >
+                <option value="all">Todas</option>
+                <option value="high">Alta</option>
+                <option value="medium">Media</option>
+                <option value="low">Baja</option>
+              </select>
+            </label>
+
             <p className="text-gray-400">
               {tasks.filter((t) => !t.completed).length} pendientes ·{' '}
               {tasks.filter((t) => t.completed).length} completadas
@@ -585,6 +696,9 @@ export default function TasksPage() {
                   : 'bg-gray-400/10 text-gray-300 border border-gray-500/30';
 
               const course = getCourseLabel(task.course_id);
+              const priorityLabel = getPriorityLabel(task.priority);
+              const priorityClass = getPriorityClass(task.priority);
+              const tagsList = parseTags(task.tags);
 
               return (
                 <li
@@ -607,11 +721,19 @@ export default function TasksPage() {
                         >
                           {task.title}
                         </p>
+
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${statusClass}`}
                         >
                           {status.label}
                         </span>
+
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] ${priorityClass}`}
+                        >
+                          Prioridad: {priorityLabel}
+                        </span>
+
                         {course && (
                           <span
                             className="px-2 py-0.5 rounded-full text-[10px] border border-[var(--card-border)]"
@@ -629,6 +751,20 @@ export default function TasksPage() {
                       {task.description && (
                         <p className="text-xs text-gray-200 mb-1">
                           {task.description}
+                        </p>
+                      )}
+
+                      {tagsList.length > 0 && (
+                        <p className="text-[11px] text-gray-300 mb-1">
+                          Etiquetas:{' '}
+                          {tagsList.map((tag, idx) => (
+                            <span
+                              key={`${task.id}-tag-${idx}`}
+                              className="inline-block px-2 py-0.5 mr-1 mb-1 rounded-full border border-[var(--card-border)] text-[10px]"
+                            >
+                              {tag}
+                            </span>
+                          ))}
                         </p>
                       )}
 
@@ -756,6 +892,32 @@ export default function TasksPage() {
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm">
+              <span>Prioridad</span>
+              <select
+                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                value={editPriority}
+                onChange={(e) =>
+                  setEditPriority(e.target.value as Priority)
+                }
+              >
+                <option value="high">Alta</option>
+                <option value="medium">Media</option>
+                <option value="low">Baja</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm">
+              <span>Etiquetas (separadas por coma)</span>
+              <input
+                type="text"
+                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                value={editTags}
+                onChange={(e) => setEditTags(e.target.value)}
+                placeholder="Ejemplo: parcial, tp, final"
+              />
             </label>
           </div>
         }

@@ -17,6 +17,10 @@
   --danger: #ff4d4d;
   --warn: #ffd166;
   --success: #06d6a0;
+
+  /* Texto para modo claro */
+  --text-soft: #5a4a72;       
+  --text-muted: #7b6b94;      
 }
 
 /* ------ TEMA OSCURO ------ */
@@ -24,7 +28,7 @@ html[data-theme='dark'] {
   --background: #050214;
   --foreground: #f5f0ff;
 
-  --card-bg: rgba(255,255,255,0.09);
+  --card-bg: rgba(255, 255, 255, 0.09);
   --card-border: rgba(255, 255, 255, 0.1);
 
   --primary: #ffba00;
@@ -36,6 +40,10 @@ html[data-theme='dark'] {
   --danger: #ff6b81;
   --warn: #ffcc5c;
   --success: #4ce1b6;
+
+  /* Texto para modo oscuro */
+  --text-soft: #cfc6e3;
+  --text-muted: #9e94b8;
 }
 
 body {
@@ -52,4 +60,57 @@ a {
 
 button {
   cursor: pointer;
+}
+
+/* ==============================
+   Inputs y selects (ambos temas)
+   ============================== */
+
+select,
+input,
+textarea {
+  background-color: var(--card-bg);
+  color: var(--foreground);
+  border: 1px solid var(--card-border);
+}
+
+/* Borde al enfocar (por defecto acento) */
+select:focus,
+input:focus,
+textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Opciones del select en modo oscuro */
+html[data-theme='dark'] select option {
+  background-color: #120824; /* un poco más sólido que el card-bg */
+  color: #f5f0ff;
+}
+
+/* Opciones del select en modo claro */
+html:not([data-theme='dark']) select option {
+  background-color: #ffffff;
+  color: #210440;
+}
+
+/* Estilos de foco para campos de formulario en modo claro (morado) */
+html:not([data-theme='dark']) input:focus,
+html:not([data-theme='dark']) textarea:focus,
+html:not([data-theme='dark']) select:focus {
+  outline: none;
+  border-color: var(--primary-soft); 
+  box-shadow: 0 0 0 1px var(--primary-soft);
+}
+
+/* ==============================
+   Utilidades de texto personalizadas
+   ============================== */
+
+.text-soft {
+  color: var(--text-soft);
+}
+
+.text-muted {
+  color: var(--text-muted);
 }

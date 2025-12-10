@@ -14,18 +14,20 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
+import { FaFire, FaCheckCircle, FaClock, FaTasks } from 'react-icons/fa';
 
 type PomodoroSession = {
   id: string;
   user_id: string;
   started_at: string;
-  ended_at: string;
+  ended_at: string | null;
   duration_minutes: number;
   task_id: string | null;
 };
 
 type TaskRow = {
   id: string;
+  title: string;
   completed: boolean;
 };
 
@@ -43,6 +45,16 @@ type DailyPoint = {
   minutes: number;
 };
 
+type TaskFocus = {
+  id: string;
+  title: string;
+  minutes: number;
+  completed: boolean;
+};
+
+type TimeUnit = 'minutes' | 'hours';
+type RangeDays = 7 | 30;
+
 export default function PerformancePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -59,6 +71,9 @@ export default function PerformancePage() {
   const [loadingStats, setLoadingStats] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [timeUnit, setTimeUnit] = useState<TimeUnit>('minutes');
+  const [rangeDays, setRangeDays] = useState<RangeDays>(7);
+
   // Proteger ruta
   useEffect(() => {
     if (!loading && !user) {
@@ -74,6 +89,7 @@ export default function PerformancePage() {
       setLoadingStats(true);
       setError(null);
 
+      // Sesiones de Pomodoro
       const {
         data: sessionsData,
         error: sessionsError,
@@ -102,12 +118,13 @@ export default function PerformancePage() {
         .filter((s) => s.task_id)
         .reduce((acc, s) => acc + (s.duration_minutes || 0), 0);
 
+      // Tareas
       const {
         data: tasksData,
         error: tasksError,
       } = await supabaseClient
         .from('tasks')
-        .select('id, completed')
+        .select('id, title, completed')
         .eq('user_id', user.id);
 
       if (tasksError) {
@@ -122,7 +139,7 @@ export default function PerformancePage() {
 
       const tasksCompleted = tasksList.filter((t) => t.completed).length;
 
-      // Racha diaria
+      // Racha diaria (días consecutivos con al menos una sesión, empezando hoy)
       const datesWithSessions = new Set(
         sessionsList.map((s) =>
           new Date(s.started_at).toISOString().slice(0, 10),
@@ -155,12 +172,12 @@ export default function PerformancePage() {
     fetchStats();
   }, [user]);
 
-  // Datos diarios para gráfico (últimos 7 días)
+  // Datos diarios para gráfico (según rango elegido) en minutos
   const dailyData: DailyPoint[] = useMemo(() => {
     const today = new Date();
     const points: DailyPoint[] = [];
 
-    for (let i = 6; i >= 0; i--) {
+    for (let i = rangeDays - 1; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
@@ -178,93 +195,110 @@ export default function PerformancePage() {
     }
 
     return points;
+  }, [sessions, rangeDays]);
+
+  // Datos del gráfico según unidad seleccionada
+  const chartData = useMemo(
+    () =>
+      dailyData.map((p) => ({
+        ...p,
+        value:
+          timeUnit === 'minutes'
+            ? p.minutes
+            : Number((p.minutes / 60).toFixed(2)),
+      })),
+    [dailyData, timeUnit],
+  );
+
+  // Actividad de hoy
+  const todayMetrics = useMemo(() => {
+    const todayKey = new Date().toISOString().slice(0, 10);
+
+    const todaySessions = sessions.filter(
+      (s) => s.started_at.slice(0, 10) === todayKey,
+    );
+
+    const minutesToday = todaySessions.reduce(
+      (acc, s) => acc + (s.duration_minutes || 0),
+      0,
+    );
+
+    return {
+      pomodorosToday: todaySessions.length,
+      minutesToday,
+    };
   }, [sessions]);
 
-  // Logros (Achievements)
-  const achievements = useMemo(() => {
-    const list: {
-      id: string;
-      name: string;
-      description: string;
-      achieved: boolean;
-    }[] = [];
+  // Progreso de tareas
+  const taskProgress = useMemo(() => {
+    const total = tasks.length;
+    const completed = stats.tasksCompleted;
+    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return { total, completed, percent };
+  }, [tasks, stats.tasksCompleted]);
 
-    const totalSessions = sessions.length;
-    const totalMinutes = stats.totalMinutesFocus;
-    const streak = stats.weekStreak;
-    const tasksCompleted = stats.tasksCompleted;
+  // Ranking de tareas más enfocadas
+  const topFocusedTasks: TaskFocus[] = useMemo(() => {
+    const minutesByTask = new Map<string, number>();
 
-    // Pomodoro
-    list.push({
-      id: 'first-pomodoro',
-      name: 'Primer ciclo',
-      description: 'Completar al menos un ciclo de Pomodoro.',
-      achieved: totalSessions >= 1,
+    sessions.forEach((s) => {
+      if (s.task_id) {
+        const prev = minutesByTask.get(s.task_id) ?? 0;
+        minutesByTask.set(s.task_id, prev + (s.duration_minutes || 0));
+      }
     });
 
-    list.push({
-      id: 'five-pomodoros-day',
-      name: 'Día intenso',
-      description: 'Completar 5 o más ciclos de Pomodoro en un mismo día.',
-      achieved: (() => {
-        const byDate = new Map<string, number>();
-        sessions.forEach((s) => {
-          const day = s.started_at.slice(0, 10);
-          byDate.set(day, (byDate.get(day) ?? 0) + 1);
-        });
-        return Array.from(byDate.values()).some((count) => count >= 5);
-      })(),
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+
+    const items: TaskFocus[] = Array.from(minutesByTask.entries()).map(
+      ([taskId, minutes]) => {
+        const task = byId.get(taskId);
+        return {
+          id: taskId,
+          title: task?.title ?? 'Tarea sin título',
+          minutes,
+          completed: task?.completed ?? false,
+        };
+      },
+    );
+
+    return items
+      .sort((a, b) => b.minutes - a.minutes)
+      .slice(0, 5);
+  }, [sessions, tasks]);
+
+  // Día más productivo (en minutos totales, sobre todas las sesiones)
+  const bestDay = useMemo(() => {
+    if (sessions.length === 0) return null;
+
+    const totals = new Map<string, number>();
+
+    sessions.forEach((s) => {
+      const key = s.started_at.slice(0, 10);
+      const prev = totals.get(key) ?? 0;
+      totals.set(key, prev + (s.duration_minutes || 0));
     });
 
-    // Tiempo total
-    list.push({
-      id: 'hundred-minutes',
-      name: 'Calentando motores',
-      description: 'Acumular al menos 100 minutos de enfoque.',
-      achieved: totalMinutes >= 100,
+    let bestDate: string | null = null;
+    let bestMinutes = 0;
+
+    totals.forEach((minutes, date) => {
+      if (minutes > bestMinutes) {
+        bestMinutes = minutes;
+        bestDate = date;
+      }
     });
 
-    list.push({
-      id: 'five-hundred-minutes',
-      name: 'Sesiones prolongadas',
-      description: 'Acumular al menos 500 minutos de enfoque.',
-      achieved: totalMinutes >= 500,
+    if (!bestDate) return null;
+
+    const label = new Date(bestDate).toLocaleDateString('es-AR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'short',
     });
 
-    // Tareas
-    list.push({
-      id: 'first-task-completed',
-      name: 'Primera tarea completada',
-      description: 'Marcar como completada al menos una tarea.',
-      achieved: tasksCompleted >= 1,
-    });
-
-    list.push({
-      id: 'ten-tasks-completed',
-      name: 'Constancia en las entregas',
-      description: 'Completar al menos 10 tareas.',
-      achieved: tasksCompleted >= 10,
-    });
-
-    // Racha
-    list.push({
-      id: 'three-day-streak',
-      name: 'Racha de 3 días',
-      description:
-        'Registrar al menos una sesión de Pomodoro durante 3 días consecutivos.',
-      achieved: streak >= 3,
-    });
-
-    list.push({
-      id: 'seven-day-streak',
-      name: 'Racha de 7 días',
-      description:
-        'Registrar al menos una sesión de Pomodoro durante 7 días consecutivos.',
-      achieved: streak >= 7,
-    });
-
-    return list;
-  }, [sessions, stats]);
+    return { date: bestDate, label, minutes: bestMinutes };
+  }, [sessions]);
 
   if (loading || (!user && !loading)) {
     return (
@@ -274,167 +308,305 @@ export default function PerformancePage() {
     );
   }
 
-  return (
-    <main className="max-w-3xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-4">Rendimiento</h1>
+  // Tooltip personalizado para el gráfico
+  const renderTooltip = (props: any) => {
+    const { active, payload, label } = props;
+    if (!active || !payload || payload.length === 0) return null;
 
-      <p className="text-sm text-gray-400 mb-6">
-        Este panel muestra estadísticas de estudio y productividad a partir de
-        las tareas y sesiones de Pomodoro registradas.
-      </p>
+    const value = payload[0].value as number;
+    const unitLabel = timeUnit === 'minutes' ? 'min' : 'h';
+
+    return (
+      <div className="rounded-md border border-[var(--card-border)] bg-[var(--card-bg)] px-3 py-2 text-xs">
+        <p className="font-semibold mb-1">{label}</p>
+        <p className="text-soft">
+          {value} {unitLabel} de enfoque
+        </p>
+      </div>
+    );
+  };
+
+  return (
+    <main className="max-w-4xl mx-auto px-4 py-8 flex flex-col gap-6">
+      <header>
+        <h1 className="text-2xl font-bold mb-1">Rendimiento</h1>
+        <p className="text-sm text-muted max-w-xl">
+          Panel de estadísticas de estudio y productividad a partir de sus
+          tareas y sesiones de Pomodoro.
+        </p>
+      </header>
 
       {error && (
-        <p className="mb-4 text-sm text-red-400">
-          {error}
-        </p>
+        <p className="mb-4 text-sm text-[var(--danger)]">{error}</p>
       )}
 
       {loadingStats ? (
         <p>Cargando estadísticas...</p>
       ) : (
         <>
-          {/* Tarjetas de resumen */}
-          <section className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-              <h2 className="text-sm font-semibold mb-2">
-                Pomodoros completados
-              </h2>
-              <p className="text-3xl font-bold">
-                {stats.totalPomodoros}
-              </p>
-              <p className="text-xs text-gray-400 mt-2">
-                Cantidad total de ciclos de enfoque registrados.
-              </p>
+          {/* Resumen principal */}
+          <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] flex gap-3">
+              <div className="mt-1">
+                <FaClock className="text-[var(--accent)]" />
+              </div>
+              <div>
+                <h2 className="text-xs font-semibold mb-1 text-soft">
+                  Tiempo total de enfoque
+                </h2>
+                <p className="text-3xl font-bold">
+                  {stats.totalMinutesFocus}
+                  <span className="text-xs ml-1 text-muted">min</span>
+                </p>
+                <p className="text-xs text-muted mt-2">
+                  Suma de todos los minutos registrados con el Pomodoro.
+                </p>
+              </div>
             </article>
 
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-              <h2 className="text-sm font-semibold mb-2">
-                Minutos de enfoque totales
-              </h2>
-              <p className="text-3xl font-bold">
-                {stats.totalMinutesFocus}
-              </p>
-              <p className="text-xs text-gray-400 mt-2">
-                Tiempo acumulado dedicado al estudio.
-              </p>
+            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] flex gap-3">
+              <div className="mt-1">
+                <FaFire className="text-[var(--accent)]" />
+              </div>
+              <div>
+                <h2 className="text-xs font-semibold mb-1 text-soft">
+                  Racha de estudio
+                </h2>
+                <p className="text-3xl font-bold">
+                  {stats.weekStreak}
+                  <span className="text-xs ml-1 text-muted">días</span>
+                </p>
+                <p className="text-xs text-muted mt-2">
+                  Días consecutivos, empezando hoy, con al menos una sesión de
+                  Pomodoro.
+                </p>
+              </div>
             </article>
 
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-              <h2 className="text-sm font-semibold mb-2">
-                Minutos vinculados a tareas
-              </h2>
-              <p className="text-3xl font-bold">
-                {stats.minutesLinkedToTasks}
-              </p>
-              <p className="text-xs text-gray-400 mt-2">
-                Tiempo de enfoque asociado explícitamente a una tarea de la
-                lista.
-              </p>
+            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] flex gap-3">
+              <div className="mt-1">
+                <FaTasks className="text-[var(--accent)]" />
+              </div>
+              <div>
+                <h2 className="text-xs font-semibold mb-1 text-soft">
+                  Tareas completadas
+                </h2>
+                <p className="text-3xl font-bold">
+                  {stats.tasksCompleted}
+                </p>
+                <p className="text-xs text-muted mt-2">
+                  Número de tareas marcadas como completadas en el gestor.
+                </p>
+              </div>
             </article>
 
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-              <h2 className="text-sm font-semibold mb-2">
-                Tareas completadas
-              </h2>
-              <p className="text-3xl font-bold">
-                {stats.tasksCompleted}
-              </p>
-              <p className="text-xs text-gray-400 mt-2">
-                Tareas marcadas como completadas en el gestor.
-              </p>
+            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] flex gap-3">
+              <div className="mt-1">
+                <FaCheckCircle className="text-[var(--accent)]" />
+              </div>
+              <div>
+                <h2 className="text-xs font-semibold mb-1 text-soft">
+                  Minutos vinculados a tareas
+                </h2>
+                <p className="text-3xl font-bold">
+                  {stats.minutesLinkedToTasks}
+                  <span className="text-xs ml-1 text-muted">min</span>
+                </p>
+                <p className="text-xs text-muted mt-2">
+                  Tiempo de enfoque asociado explícitamente a tareas concretas.
+                </p>
+              </div>
             </article>
+          </section>
 
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] sm:col-span-2">
-              <h2 className="text-sm font-semibold mb-2">
-                Racha de estudio
+          {/* Hoy + progreso tareas */}
+          <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Actividad de hoy */}
+            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] flex flex-col gap-2">
+              <h2 className="text-xs font-semibold text-soft">
+                Actividad de hoy
               </h2>
-              <p className="text-3xl font-bold">
-                {stats.weekStreak} días
+              <p className="text-sm text-muted">
+                Panorama rápido de cómo va el día de estudio.
               </p>
-              <p className="text-xs text-gray-400 mt-2">
-                Días consecutivos (empezando hoy) con al menos una sesión de
-                Pomodoro.
+              <div className="flex items-end mt-3">
+              <div>
+                 <p className="text-[11px] text-muted mb-1">Minutos de enfoque</p>
+                <p className="text-2xl font-bold">
+                  {todayMetrics.minutesToday}
+                  <span className="text-xs ml-1 text-muted">min</span>
+                </p>
+              </div>
+              <div className="ml-18"> 
+                <p className="text-[11px] text-muted mb-1">Pomodoros</p>
+                <p className="text-2xl font-bold">{todayMetrics.pomodorosToday}</p>
+              </div>
+             </div>
+            </article>
+            {/* Progreso de tareas */}
+            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] flex flex-col gap-3">
+              <h2 className="text-xs font-semibold text-soft">
+                Progreso de tareas
+              </h2>
+              <p className="text-sm text-muted">
+                {taskProgress.total > 0 ? (
+                  <>
+                    {taskProgress.completed} de {taskProgress.total} tareas
+                    completadas.
+                  </>
+                ) : (
+                  'Todavía no hay tareas registradas.'
+                )}
+              </p>
+              <div className="w-full h-2 rounded-full bg-black/5 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-[var(--accent-soft)]"
+                  style={{ width: `${taskProgress.percent}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-muted">
+                {taskProgress.percent}% del total de tareas marcadas como
+                completadas.
               </p>
             </article>
           </section>
 
-          {/* Gráfico: últimos 7 días */}
-          <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] mb-6">
-            <h2 className="text-sm font-semibold mb-3">
-              Minutos de enfoque (últimos 7 días)
-            </h2>
+          {/* Gráfico: últimos X días con toggle Minutos/Horas y 7/30 días */}
+          <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-sm font-semibold text-soft">
+                  Enfoque (últimos {rangeDays} días)
+                </h2>
+                <p className="text-xs text-muted">
+                  Suma diaria de tiempo de estudio registrado con el Pomodoro.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <div className="inline-flex rounded-full border border-[var(--card-border)] text-xs overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setTimeUnit('minutes')}
+                    className={`px-3 py-1 ${
+                      timeUnit === 'minutes'
+                        ? 'bg-[var(--accent-soft)] text-[var(--primary)]'
+                        : 'text-muted'
+                    }`}
+                  >
+                    Minutos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTimeUnit('hours')}
+                    className={`px-3 py-1 ${
+                      timeUnit === 'hours'
+                        ? 'bg-[var(--accent-soft)] text-[var(--primary)]'
+                        : 'text-muted'
+                    }`}
+                  >
+                    Horas
+                  </button>
+                </div>
+
+                <div className="inline-flex rounded-full border border-[var(--card-border)] text-xs overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setRangeDays(7)}
+                    className={`px-3 py-1 ${
+                      rangeDays === 7
+                        ? 'bg-[var(--accent-soft)] text-[var(--primary)]'
+                        : 'text-muted'
+                    }`}
+                  >
+                    7 días
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRangeDays(30)}
+                    className={`px-3 py-1 ${
+                      rangeDays === 30
+                        ? 'bg-[var(--accent-soft)] text-[var(--primary)]'
+                        : 'text-muted'
+                    }`}
+                  >
+                    30 días
+                  </button>
+                </div>
+              </div>
+            </div>
 
             {dailyData.every((p) => p.minutes === 0) ? (
-              <p className="text-sm text-gray-400">
-                Aún no hay sesiones de Pomodoro registradas en los últimos días.
+              <p className="text-sm text-muted">
+                Aún no hay sesiones de Pomodoro registradas en los últimos
+                días.
               </p>
             ) : (
               <div className="w-full h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dailyData}>
+                  <BarChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                    <XAxis dataKey="label" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="minutes" />
+                    <XAxis dataKey="label" fontSize={11} />
+                    <YAxis
+                      fontSize={11}
+                       tickFormatter={(value) => {
+                          const num = Number(value);
+                          if (isNaN(num)) return value; // Evita crasheos si Recharts envía texto raro
+                          return timeUnit === 'minutes' ? num : num.toFixed(1);
+                       }}
+                    />
+                    <Tooltip content={renderTooltip} />
+                    <Bar dataKey="value" fill="var(--accent)" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             )}
+
+            {bestDay && (
+              <p className="mt-3 text-xs text-muted">
+                Día más productivo:{" "}
+                <span className="font-semibold text-soft">
+                  {bestDay.label}
+                </span>{" "}
+                con{" "}
+                <span className="font-semibold text-soft">
+                  {bestDay.minutes} min
+                </span>{" "}
+                de enfoque.
+              </p>
+            )}
           </section>
 
-          <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-            <h2 className="text-sm font-semibold mb-2">Próximos pasos</h2>
-            <ul className="list-disc list-inside text-sm text-gray-300">
-              <li>
-                Mostrar ranking de tareas según los minutos de enfoque
-                acumulados.
-              </li>
-              <li>
-                Agregar gráficos de evolución por materia o curso (cuando se
-                incorporen).
-              </li>
-              <li>
-                Extender el sistema de logros con objetivos personalizados.
-              </li>
-            </ul>
-          </section>
+          {/* Ranking de tareas con más minutos de enfoque */}
+          <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] mb-6">
+            <h2 className="text-sm font-semibold mb-3 text-soft">
+              Tareas con más minutos de enfoque
+            </h2>
 
-          {/* Logros */}
-          <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] mt-6">
-            <h2 className="text-sm font-semibold mb-2">Logros</h2>
-            {achievements.length === 0 ? (
-              <p className="text-sm text-gray-400">
-                Aún no hay logros definidos.
+            {topFocusedTasks.length === 0 ? (
+              <p className="text-sm text-muted">
+                Aún no hay sesiones de Pomodoro vinculadas a tareas. Desde el
+                módulo de Pomodoro puede asociar cada sesión a una tarea para
+                ver este ranking.
               </p>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                {achievements.map((a) => (
-                  <div
-                    key={a.id}
-                    className={`border rounded-md p-3 ${
-                      a.achieved
-                        ? 'border-[var(--success)] bg-[var(--success)]/10'
-                        : 'border-[var(--card-border)] opacity-70'
-                    }`}
+              <ul className="flex flex-col gap-2 text-sm">
+                {topFocusedTasks.map((t) => (
+                  <li
+                    key={t.id}
+                    className="flex items-center justify-between border border-[var(--card-border)] rounded-md px-3 py-2 bg-[var(--card-bg)]"
                   >
-                    <p className="font-semibold mb-1">{a.name}</p>
-                    <p className="text-xs text-gray-300 mb-2">
-                      {a.description}
-                    </p>
-                    <p className="text-[11px] font-medium">
-                      Estado:{' '}
-                      <span
-                        className={
-                          a.achieved ? 'text-[var(--success)]' : 'text-gray-400'
-                        }
-                      >
-                        {a.achieved ? 'Completado' : 'Pendiente'}
+                    <div className="flex flex-col">
+                      <span className="font-medium">{t.title}</span>
+                      <span className="text-[11px] text-muted">
+                        {t.completed ? 'Completada' : 'Pendiente'}
                       </span>
-                    </p>
-                  </div>
+                    </div>
+                    <span className="text-xs font-semibold text-soft">
+                      {t.minutes} min
+                    </span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </section>
         </>

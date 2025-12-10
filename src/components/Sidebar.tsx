@@ -8,14 +8,49 @@ import { useTheme } from '@/context/ThemeContext';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 
-const links = [
-  { href: '/', label: 'Inicio', requiresAuth: false },
-  { href: '/tasks', label: 'Tareas', requiresAuth: true },
-  { href: '/pomodoro', label: 'Pomodoro', requiresAuth: true },
-  { href: '/performance', label: 'Rendimiento', requiresAuth: true },
-  { href: '/calendar', label: 'Calendario', requiresAuth: true },
-  { href: '/courses', label: 'Materias', requiresAuth: true },
-  { href: '/profile', label: 'Perfil', requiresAuth: true },
+import {
+  FaHome,
+  FaClipboardList,
+  FaClock,
+  FaChartBar,
+  FaCalendarAlt,
+  FaBook,
+  FaUser,
+  FaMoon,
+  FaSignOutAlt,
+  FaInfoCircle,
+  FaListUl,
+  FaQuestionCircle,
+  FaClipboardCheck,
+} from 'react-icons/fa';
+
+const mainLinks = [
+  { href: '/', label: 'Inicio', icon: <FaHome />, requiresAuth: false },
+  { href: '/courses', label: 'Materias', icon: <FaBook />, requiresAuth: true },
+  { href: '/tasks', label: 'Tareas', icon: <FaClipboardList />, requiresAuth: true },
+  { href: '/grades', label: 'Notas', requiresAuth: true, icon: <FaClipboardCheck /> },
+  { href: '/performance', label: 'Rendimiento', icon: <FaChartBar />, requiresAuth: true },
+  { href: '/pomodoro', label: 'Pomodoro', icon: <FaClock />, requiresAuth: true },
+  { href: '/calendar', label: 'Calendario', icon: <FaCalendarAlt />, requiresAuth: true },
+  { href: '/profile', label: 'Perfil', icon: <FaUser />, requiresAuth: true },
+];
+
+const publicSections = [
+  {
+    href: '/#acerca-de',
+    label: 'Acerca de',
+    icon: <FaInfoCircle />,
+  },
+  {
+    href: '/#que-permite',
+    label: 'Qué permite hacer',
+    icon: <FaListUl />,
+  },
+  {
+    href: '/#como-funciona',
+    label: 'Cómo funciona',
+    icon: <FaQuestionCircle />,
+  },
 ];
 
 export function Sidebar() {
@@ -30,10 +65,6 @@ export function Sidebar() {
 
   const widthClass = collapsed ? 'w-16' : 'w-60';
 
-  const handleLogoutClick = () => {
-    setLogoutOpen(true);
-  };
-
   const handleLogoutConfirm = async () => {
     setLoggingOut(true);
     await supabaseClient.auth.signOut();
@@ -43,38 +74,55 @@ export function Sidebar() {
     router.refresh();
   };
 
-  const handleLogoutCancel = () => {
-    setLogoutOpen(false);
-  };
-
   return (
     <>
       <aside
-        className={`h-screen ${widthClass} border-r border-[var(--card-border)] bg-[var(--background)] text-[var(--foreground)] flex flex-col justify-between px-3 py-4 transition-all`}
+        className={`sticky top-0 ${widthClass} h-screen shrink-0 border-r border-[var(--card-border)] bg-[var(--background)] text-[var(--foreground)] flex flex-col justify-between px-3 py-4 transition-all duration-300`}
       >
-        {/* Parte superior: botón colapsar + logo + navegación */}
+        {/* Parte superior */}
         <div>
+          {/* Botón colapsar */}
           <button
             onClick={() => setCollapsed((prev) => !prev)}
             className="mb-4 px-2 py-1 border border-[var(--card-border)] rounded-md text-xs hover:bg-white/5 w-full"
+            title={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
           >
             {collapsed ? '≫' : '≪'}
           </button>
 
-          <Link href="/" className="block mb-6">
-            <span className="text-lg font-bold">
-              {collapsed ? 'T' : 'Taskademic'}
-            </span>
+          {/* Logo */}
+          <Link
+            href="/"
+            className="block mb-6 flex items-center gap-3 justify-center md:justify-start"
+            title={collapsed ? 'Taskademic' : undefined}
+          >
+            {collapsed ? (
+              <img
+                src="/taskademic-logo.svg"
+                alt="Taskademic logo"
+                className="w-8 h-8"
+              />
+            ) : (
+              <>
+                <img
+                  src="/taskademic-logo.svg"
+                  alt="Taskademic logo"
+                  className="w-7 h-7"
+                />
+                <span className="text-lg font-bold">Taskademic</span>
+              </>
+            )}
           </Link>
 
+          {/* Navegación principal */}
           <nav className="flex flex-col gap-1">
-            {links
-              .filter((link) => !link.requiresAuth || user)
+            {mainLinks
+              .filter((l) => !l.requiresAuth || user)
               .map((link) => {
                 const active = pathname === link.href;
 
                 const baseClasses =
-                  'px-3 py-2 rounded-md text-sm border text-left transition-colors';
+                  'px-3 py-2 rounded-md text-sm border flex items-center gap-3 transition-colors';
 
                 const activeClasses =
                   'bg-[var(--accent-soft)] border-[var(--accent)] font-semibold';
@@ -89,24 +137,57 @@ export function Sidebar() {
                     className={`${baseClasses} ${
                       active ? activeClasses : inactiveClasses
                     }`}
+                    title={collapsed ? link.label : undefined}
                   >
-                    {collapsed ? link.label[0] : link.label}
+                    {link.icon}
+                    {!collapsed && <span>{link.label}</span>}
                   </Link>
                 );
               })}
           </nav>
+
+          {/* Secciones de landing (solo sin sesión) */}
+          {!user && (
+            <div className="mt-4 pt-3 border-t border-[var(--card-border)]">
+              {!collapsed && (
+                <p className="text-[10px] uppercase tracking-wide mb-2 text-left opacity-60">
+                  Taskademic
+                </p>
+              )}
+              <nav className="flex flex-col gap-1 text-sm">
+                {publicSections.map((section) => (
+                  <Link
+                    key={section.href}
+                    href={section.href}
+                    className="px-3 py-2 rounded-md border border-transparent hover:bg-white/5 flex items-center gap-3 justify-center md:justify-start"
+                    title={collapsed ? section.label : undefined}
+                  >
+                    {section.icon}
+                    {!collapsed && <span>{section.label}</span>}
+                  </Link>
+                ))}
+              </nav>
+            </div>
+          )}
+
         </div>
 
-        {/* Parte inferior: tema + sesión */}
+        {/* Parte inferior */}
         <div className="flex flex-col gap-3 text-sm">
+          {/* Modo oscuro */}
           <button
             onClick={toggleTheme}
             className="w-full px-3 py-2 border border-[var(--card-border)] rounded-md hover:bg-white/5 flex items-center justify-between"
+            title={collapsed ? 'Modo oscuro' : undefined}
           >
-            <span>{collapsed ? '🌙' : 'Modo oscuro'}</span>
+            <div className="flex items-center gap-3">
+              <FaMoon />
+              {!collapsed && <span>Modo oscuro</span>}
+            </div>
             {!collapsed && <span>{theme === 'dark' ? 'ON' : 'OFF'}</span>}
           </button>
 
+          {/* Sesión */}
           {user ? (
             <div className="border-t border-[var(--card-border)] pt-3">
               {!collapsed && (
@@ -114,11 +195,14 @@ export function Sidebar() {
                   {user.email}
                 </p>
               )}
+
               <button
-                onClick={handleLogoutClick}
-                className="w-full px-3 py-2 border border-[var(--card-border)] rounded-md hover:bg-white/5 text-xs"
+                onClick={() => setLogoutOpen(true)}
+                className="w-full px-3 py-2 border border-[var(--card-border)] rounded-md hover:bg-white/5 flex items-center gap-3 text-xs"
+                title={collapsed ? 'Cerrar sesión' : undefined}
               >
-                {collapsed ? 'Salir' : 'Cerrar sesión'}
+                <FaSignOutAlt />
+                {!collapsed && <span>Cerrar sesión</span>}
               </button>
             </div>
           ) : (
@@ -126,14 +210,16 @@ export function Sidebar() {
               <Link
                 href="/login"
                 className="w-full px-3 py-2 border border-[var(--card-border)] rounded-md hover:bg-white/5 text-center text-xs"
+                title={collapsed ? 'Iniciar sesión' : undefined}
               >
-                {collapsed ? 'Log' : 'Iniciar sesión'}
+                {!collapsed ? 'Iniciar sesión' : 'Log'}
               </Link>
               <Link
                 href="/register"
                 className="w-full px-3 py-2 border border-[var(--card-border)] rounded-md hover:bg-white/5 text-center text-xs"
+                title={collapsed ? 'Registrarse' : undefined}
               >
-                {collapsed ? 'Reg' : 'Registrarse'}
+                {!collapsed ? 'Registrarse' : 'Reg'}
               </Link>
             </div>
           )}
@@ -148,7 +234,7 @@ export function Sidebar() {
         confirmLabel="Cerrar sesión"
         cancelLabel="Cancelar"
         loading={loggingOut}
-        onCancel={handleLogoutCancel}
+        onCancel={() => setLogoutOpen(false)}
         onConfirm={handleLogoutConfirm}
       />
     </>
