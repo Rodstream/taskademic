@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { useTheme } from '@/context/ThemeContext';
 import { supabaseClient } from '@/lib/supabaseClient';
 import {
   ResponsiveContainer,
@@ -14,7 +13,9 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  Cell,
 } from 'recharts';
+import { useTheme } from '@/context/ThemeContext';
 
 type PomodoroSession = {
   id: string;
@@ -68,7 +69,7 @@ type CourseAverage = {
   count: number;
 };
 
-// Color "semáforo" para notas
+// Color "semáforo" para notas (varía solo por nota, no por tema)
 function gradeColor(value: number) {
   if (value >= 7) return 'var(--success)';
   if (value >= 4) return 'var(--warn)';
@@ -78,17 +79,15 @@ function gradeColor(value: number) {
 // Color de barra según tema (violeta en claro, naranja en oscuro)
 function chartFillColor(theme: string | undefined) {
   if (theme === 'dark') {
-    return 'var(--accent)';        // naranja en modo oscuro
+    return 'var(--accent)'; // naranja en modo oscuro
   }
-  return 'var(--primary-soft)';    // violeta en modo claro
+  return 'var(--primary-soft)'; // violeta en modo claro
 }
-
 
 export default function PerformancePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const { theme } = useTheme();
-
 
   const [sessions, setSessions] = useState<PomodoroSession[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
@@ -303,6 +302,21 @@ export default function PerformancePage() {
     return result;
   }, [courseGrades]);
 
+  // Mejor materia y materia a reforzar
+  const bestCourse = useMemo(() => {
+    if (!courseAverages.length) return null;
+    return courseAverages.reduce((best, current) =>
+      current.average > best.average ? current : best,
+    );
+  }, [courseAverages]);
+
+  const weakestCourse = useMemo(() => {
+    if (courseAverages.length < 2) return null;
+    return courseAverages.reduce((worst, current) =>
+      current.average < worst.average ? current : worst,
+    );
+  }, [courseAverages]);
+
   if (loading || (!user && !loading)) {
     return (
       <main className="flex items-center justify-center min-h-screen">
@@ -491,23 +505,59 @@ export default function PerformancePage() {
               </p>
             ) : (
               <>
+                {(bestCourse || weakestCourse) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                    {bestCourse && (
+                      <article className="border border-[var(--card-border)] rounded-lg px-3 py-2 bg-[var(--card-bg)]">
+                        <h3 className="text-xs font-semibold text-[var(--text-muted)] mb-1">
+                          Mejor materia
+                        </h3>
+                        <p className="text-sm font-semibold">
+                          {bestCourse.courseName}
+                        </p>
+                        <p
+                          className="text-sm font-semibold"
+                          style={{ color: gradeColor(bestCourse.average) }}
+                        >
+                          Promedio: {bestCourse.average.toFixed(2)}
+                        </p>
+                      </article>
+                    )}
+
+                    {weakestCourse && (
+                      <article className="border border-[var(--card-border)] rounded-lg px-3 py-2 bg-[var(--card-bg)]">
+                        <h3 className="text-xs font-semibold text-[var(--text-muted)] mb-1">
+                          Materia a reforzar
+                        </h3>
+                          <p className="text-sm font-semibold">
+                          {weakestCourse.courseName}
+                        </p>
+                        <p
+                          className="text-sm font-semibold"
+                          style={{ color: gradeColor(weakestCourse.average) }}
+                        >
+                          Promedio: {weakestCourse.average.toFixed(2)}
+                        </p>
+                      </article>
+                    )}
+                  </div>
+                )}
+
                 <div className="w-full h-64 mb-4">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={courseAverages}
-                      margin={{ top: 10, right: 20, bottom: 60, left: 20 }}  
+                      margin={{ top: 10, right: 20, bottom: 60, left: 20 }}
                     >
-
                       <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                       <XAxis
-                          dataKey="courseName"
-                          tick={{ fontSize: 12 }}
-                          interval={0}
-                          angle={-25}             
-                          textAnchor="end"
-                          dy={10}                 
+                        dataKey="courseName"
+                        tick={{ fontSize: 12 }}
+                        interval={0}
+                        angle={-25}
+                        textAnchor="end"
+                        dy={10}
                       />
-
                       <YAxis
                         domain={[0, 10]}
                         tick={{ fontSize: 11 }}
@@ -525,11 +575,14 @@ export default function PerformancePage() {
                           return [`${num.toFixed(2)}`, label];
                         }}
                       />
-                      <Bar
-                       dataKey="average"
-                       radius={[4, 4, 0, 0]}
-                        fill={chartFillColor(theme)}
-                      />
+                      <Bar dataKey="average" radius={[4, 4, 0, 0]}>
+                        {courseAverages.map((c) => (
+                          <Cell
+                            key={c.courseId}
+                            fill={gradeColor(c.average)}
+                          />
+                        ))}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
