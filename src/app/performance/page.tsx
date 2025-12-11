@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
 import { supabaseClient } from '@/lib/supabaseClient';
 import {
   ResponsiveContainer,
@@ -14,20 +15,18 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
-import { FaFire, FaCheckCircle, FaClock, FaTasks } from 'react-icons/fa';
 
 type PomodoroSession = {
   id: string;
   user_id: string;
   started_at: string;
-  ended_at: string | null;
+  ended_at: string;
   duration_minutes: number;
   task_id: string | null;
 };
 
 type TaskRow = {
   id: string;
-  title: string;
   completed: boolean;
 };
 
@@ -45,19 +44,51 @@ type DailyPoint = {
   minutes: number;
 };
 
-type TaskFocus = {
+type CourseRow = {
   id: string;
-  title: string;
-  minutes: number;
-  completed: boolean;
+  name: string;
 };
 
-type TimeUnit = 'minutes' | 'hours';
-type RangeDays = 7 | 30;
+type CourseGradeRow = {
+  id: string;
+  course_id: string;
+  grade: number;
+  exam_type: string | null;
+  exam_date: string | null;
+};
+
+type GradeWithCourse = CourseGradeRow & {
+  courseName: string;
+};
+
+type CourseAverage = {
+  courseId: string;
+  courseName: string;
+  average: number;
+  count: number;
+};
+
+// Color "semáforo" para notas
+function gradeColor(value: number) {
+  if (value >= 7) return 'var(--success)';
+  if (value >= 4) return 'var(--warn)';
+  return 'var(--danger)';
+}
+
+// Color de barra según tema (violeta en claro, naranja en oscuro)
+function chartFillColor(theme: string | undefined) {
+  if (theme === 'dark') {
+    return 'var(--accent)';        // naranja en modo oscuro
+  }
+  return 'var(--primary-soft)';    // violeta en modo claro
+}
+
 
 export default function PerformancePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const { theme } = useTheme();
+
 
   const [sessions, setSessions] = useState<PomodoroSession[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
@@ -68,11 +99,13 @@ export default function PerformancePage() {
     tasksCompleted: 0,
     weekStreak: 0,
   });
+
+  const [timeUnit, setTimeUnit] = useState<'minutes' | 'hours'>('minutes');
+
+  const [courseGrades, setCourseGrades] = useState<GradeWithCourse[]>([]);
+
   const [loadingStats, setLoadingStats] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const [timeUnit, setTimeUnit] = useState<TimeUnit>('minutes');
-  const [rangeDays, setRangeDays] = useState<RangeDays>(7);
 
   // Proteger ruta
   useEffect(() => {
@@ -124,7 +157,7 @@ export default function PerformancePage() {
         error: tasksError,
       } = await supabaseClient
         .from('tasks')
-        .select('id, title, completed')
+        .select('id, completed')
         .eq('user_id', user.id);
 
       if (tasksError) {
@@ -139,7 +172,7 @@ export default function PerformancePage() {
 
       const tasksCompleted = tasksList.filter((t) => t.completed).length;
 
-      // Racha diaria (días consecutivos con al menos una sesión, empezando hoy)
+      // Racha diaria
       const datesWithSessions = new Set(
         sessionsList.map((s) =>
           new Date(s.started_at).toISOString().slice(0, 10),
@@ -166,18 +199,51 @@ export default function PerformancePage() {
         tasksCompleted,
         weekStreak: streak,
       });
+
+      // ====== Notas y materias ======
+      const { data: coursesData, error: coursesError } = await supabaseClient
+        .from('courses')
+        .select('id, name')
+        .eq('user_id', user.id);
+
+      if (coursesError) {
+        console.warn('Error cargando materias en rendimiento:', coursesError);
+      }
+
+      const coursesList = (coursesData ?? []) as CourseRow[];
+      const coursesMap = new Map(coursesList.map((c) => [c.id, c.name]));
+
+      const { data: gradesData, error: gradesError } = await supabaseClient
+        .from('course_grades')
+        .select('id, course_id, grade, exam_type, exam_date')
+        .eq('user_id', user.id);
+
+      if (gradesError) {
+        console.warn(
+          'Error cargando notas de exámenes en rendimiento:',
+          gradesError,
+        );
+      } else {
+        const rawGrades = (gradesData ?? []) as CourseGradeRow[];
+        const withNames: GradeWithCourse[] = rawGrades.map((g) => ({
+          ...g,
+          courseName: coursesMap.get(g.course_id) ?? 'Materia desconocida',
+        }));
+        setCourseGrades(withNames);
+      }
+
       setLoadingStats(false);
     };
 
     fetchStats();
   }, [user]);
 
-  // Datos diarios para gráfico (según rango elegido) en minutos
+  // Datos diarios para gráfico (últimos 7 días)
   const dailyData: DailyPoint[] = useMemo(() => {
     const today = new Date();
     const points: DailyPoint[] = [];
 
-    for (let i = rangeDays - 1; i >= 0; i--) {
+    for (let i = 6; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
@@ -195,110 +261,47 @@ export default function PerformancePage() {
     }
 
     return points;
-  }, [sessions, rangeDays]);
-
-  // Datos del gráfico según unidad seleccionada
-  const chartData = useMemo(
-    () =>
-      dailyData.map((p) => ({
-        ...p,
-        value:
-          timeUnit === 'minutes'
-            ? p.minutes
-            : Number((p.minutes / 60).toFixed(2)),
-      })),
-    [dailyData, timeUnit],
-  );
-
-  // Actividad de hoy
-  const todayMetrics = useMemo(() => {
-    const todayKey = new Date().toISOString().slice(0, 10);
-
-    const todaySessions = sessions.filter(
-      (s) => s.started_at.slice(0, 10) === todayKey,
-    );
-
-    const minutesToday = todaySessions.reduce(
-      (acc, s) => acc + (s.duration_minutes || 0),
-      0,
-    );
-
-    return {
-      pomodorosToday: todaySessions.length,
-      minutesToday,
-    };
   }, [sessions]);
 
-  // Progreso de tareas
-  const taskProgress = useMemo(() => {
-    const total = tasks.length;
-    const completed = stats.tasksCompleted;
-    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-    return { total, completed, percent };
-  }, [tasks, stats.tasksCompleted]);
+  // Transformar minutos a la unidad seleccionada
+  const chartData = useMemo(() => {
+    if (timeUnit === 'minutes') {
+      return dailyData.map((p) => ({ ...p, value: p.minutes }));
+    }
+    // horas
+    return dailyData.map((p) => ({ ...p, value: p.minutes / 60 }));
+  }, [dailyData, timeUnit]);
 
-  // Ranking de tareas más enfocadas
-  const topFocusedTasks: TaskFocus[] = useMemo(() => {
-    const minutesByTask = new Map<string, number>();
+  // Promedios de notas por materia
+  const courseAverages: CourseAverage[] = useMemo(() => {
+    if (!courseGrades.length) return [];
 
-    sessions.forEach((s) => {
-      if (s.task_id) {
-        const prev = minutesByTask.get(s.task_id) ?? 0;
-        minutesByTask.set(s.task_id, prev + (s.duration_minutes || 0));
-      }
-    });
+    const map = new Map<string, { name: string; total: number; count: number }>();
 
-    const byId = new Map(tasks.map((t) => [t.id, t]));
+    for (const g of courseGrades) {
+      const entry = map.get(g.course_id) ?? {
+        name: g.courseName,
+        total: 0,
+        count: 0,
+      };
+      entry.total += g.grade;
+      entry.count += 1;
+      map.set(g.course_id, entry);
+    }
 
-    const items: TaskFocus[] = Array.from(minutesByTask.entries()).map(
-      ([taskId, minutes]) => {
-        const task = byId.get(taskId);
-        return {
-          id: taskId,
-          title: task?.title ?? 'Tarea sin título',
-          minutes,
-          completed: task?.completed ?? false,
-        };
-      },
-    );
+    const result: CourseAverage[] = [];
+    for (const [courseId, entry] of map.entries()) {
+      result.push({
+        courseId,
+        courseName: entry.name,
+        average: entry.total / entry.count,
+        count: entry.count,
+      });
+    }
 
-    return items
-      .sort((a, b) => b.minutes - a.minutes)
-      .slice(0, 5);
-  }, [sessions, tasks]);
-
-  // Día más productivo (en minutos totales, sobre todas las sesiones)
-  const bestDay = useMemo(() => {
-    if (sessions.length === 0) return null;
-
-    const totals = new Map<string, number>();
-
-    sessions.forEach((s) => {
-      const key = s.started_at.slice(0, 10);
-      const prev = totals.get(key) ?? 0;
-      totals.set(key, prev + (s.duration_minutes || 0));
-    });
-
-    let bestDate: string | null = null;
-    let bestMinutes = 0;
-
-    totals.forEach((minutes, date) => {
-      if (minutes > bestMinutes) {
-        bestMinutes = minutes;
-        bestDate = date;
-      }
-    });
-
-    if (!bestDate) return null;
-
-    const label = new Date(bestDate).toLocaleDateString('es-AR', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'short',
-    });
-
-    return { date: bestDate, label, minutes: bestMinutes };
-  }, [sessions]);
+    result.sort((a, b) => a.courseName.localeCompare(b.courseName));
+    return result;
+  }, [courseGrades]);
 
   if (loading || (!user && !loading)) {
     return (
@@ -308,306 +311,273 @@ export default function PerformancePage() {
     );
   }
 
-  // Tooltip personalizado para el gráfico
-  const renderTooltip = (props: any) => {
-    const { active, payload, label } = props;
-    if (!active || !payload || payload.length === 0) return null;
-
-    const value = payload[0].value as number;
-    const unitLabel = timeUnit === 'minutes' ? 'min' : 'h';
-
-    return (
-      <div className="rounded-md border border-[var(--card-border)] bg-[var(--card-bg)] px-3 py-2 text-xs">
-        <p className="font-semibold mb-1">{label}</p>
-        <p className="text-soft">
-          {value} {unitLabel} de enfoque
-        </p>
-      </div>
-    );
-  };
-
   return (
-    <main className="max-w-4xl mx-auto px-4 py-8 flex flex-col gap-6">
-      <header>
-        <h1 className="text-2xl font-bold mb-1">Rendimiento</h1>
-        <p className="text-sm text-muted max-w-xl">
-          Panel de estadísticas de estudio y productividad a partir de sus
-          tareas y sesiones de Pomodoro.
+    <main className="max-w-3xl mx-auto px-4 py-8 flex flex-col gap-6">
+      <section>
+        <h1 className="text-2xl font-bold mb-2">Rendimiento</h1>
+        <p className="text-sm text-gray-400">
+          Este panel muestra estadísticas de estudio (Pomodoro, tareas) y
+          rendimiento académico según las notas registradas en Taskademic.
         </p>
-      </header>
+      </section>
 
       {error && (
-        <p className="mb-4 text-sm text-[var(--danger)]">{error}</p>
+        <p className="mb-4 text-sm text-red-400">
+          {error}
+        </p>
       )}
 
       {loadingStats ? (
         <p>Cargando estadísticas...</p>
       ) : (
         <>
-          {/* Resumen principal */}
+          {/* Tarjetas de resumen */}
           <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] flex gap-3">
-              <div className="mt-1">
-                <FaClock className="text-[var(--accent)]" />
-              </div>
-              <div>
-                <h2 className="text-xs font-semibold mb-1 text-soft">
-                  Tiempo total de enfoque
-                </h2>
-                <p className="text-3xl font-bold">
-                  {stats.totalMinutesFocus}
-                  <span className="text-xs ml-1 text-muted">min</span>
-                </p>
-                <p className="text-xs text-muted mt-2">
-                  Suma de todos los minutos registrados con el Pomodoro.
-                </p>
-              </div>
-            </article>
-
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] flex gap-3">
-              <div className="mt-1">
-                <FaFire className="text-[var(--accent)]" />
-              </div>
-              <div>
-                <h2 className="text-xs font-semibold mb-1 text-soft">
-                  Racha de estudio
-                </h2>
-                <p className="text-3xl font-bold">
-                  {stats.weekStreak}
-                  <span className="text-xs ml-1 text-muted">días</span>
-                </p>
-                <p className="text-xs text-muted mt-2">
-                  Días consecutivos, empezando hoy, con al menos una sesión de
-                  Pomodoro.
-                </p>
-              </div>
-            </article>
-
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] flex gap-3">
-              <div className="mt-1">
-                <FaTasks className="text-[var(--accent)]" />
-              </div>
-              <div>
-                <h2 className="text-xs font-semibold mb-1 text-soft">
-                  Tareas completadas
-                </h2>
-                <p className="text-3xl font-bold">
-                  {stats.tasksCompleted}
-                </p>
-                <p className="text-xs text-muted mt-2">
-                  Número de tareas marcadas como completadas en el gestor.
-                </p>
-              </div>
-            </article>
-
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] flex gap-3">
-              <div className="mt-1">
-                <FaCheckCircle className="text-[var(--accent)]" />
-              </div>
-              <div>
-                <h2 className="text-xs font-semibold mb-1 text-soft">
-                  Minutos vinculados a tareas
-                </h2>
-                <p className="text-3xl font-bold">
-                  {stats.minutesLinkedToTasks}
-                  <span className="text-xs ml-1 text-muted">min</span>
-                </p>
-                <p className="text-xs text-muted mt-2">
-                  Tiempo de enfoque asociado explícitamente a tareas concretas.
-                </p>
-              </div>
-            </article>
-          </section>
-
-          {/* Hoy + progreso tareas */}
-          <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Actividad de hoy */}
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] flex flex-col gap-2">
-              <h2 className="text-xs font-semibold text-soft">
-                Actividad de hoy
+            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
+              <h2 className="text-sm font-semibold mb-2">
+                Pomodoros completados
               </h2>
-              <p className="text-sm text-muted">
-                Panorama rápido de cómo va el día de estudio.
+              <p className="text-3xl font-bold">
+                {stats.totalPomodoros}
               </p>
-              <div className="flex items-end mt-3">
-              <div>
-                 <p className="text-[11px] text-muted mb-1">Minutos de enfoque</p>
-                <p className="text-2xl font-bold">
-                  {todayMetrics.minutesToday}
-                  <span className="text-xs ml-1 text-muted">min</span>
-                </p>
-              </div>
-              <div className="ml-18"> 
-                <p className="text-[11px] text-muted mb-1">Pomodoros</p>
-                <p className="text-2xl font-bold">{todayMetrics.pomodorosToday}</p>
-              </div>
-             </div>
+              <p className="text-xs text-gray-400 mt-2">
+                Cantidad total de ciclos de enfoque registrados.
+              </p>
             </article>
-            {/* Progreso de tareas */}
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] flex flex-col gap-3">
-              <h2 className="text-xs font-semibold text-soft">
-                Progreso de tareas
+
+            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
+              <h2 className="text-sm font-semibold mb-2">
+                Minutos de enfoque totales
               </h2>
-              <p className="text-sm text-muted">
-                {taskProgress.total > 0 ? (
-                  <>
-                    {taskProgress.completed} de {taskProgress.total} tareas
-                    completadas.
-                  </>
-                ) : (
-                  'Todavía no hay tareas registradas.'
-                )}
+              <p className="text-3xl font-bold">
+                {stats.totalMinutesFocus}
               </p>
-              <div className="w-full h-2 rounded-full bg-black/5 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-[var(--accent-soft)]"
-                  style={{ width: `${taskProgress.percent}%` }}
-                />
-              </div>
-              <p className="text-[11px] text-muted">
-                {taskProgress.percent}% del total de tareas marcadas como
-                completadas.
+              <p className="text-xs text-gray-400 mt-2">
+                Tiempo acumulado dedicado al estudio.
+              </p>
+            </article>
+
+            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
+              <h2 className="text-sm font-semibold mb-2">
+                Minutos vinculados a tareas
+              </h2>
+              <p className="text-3xl font-bold">
+                {stats.minutesLinkedToTasks}
+              </p>
+              <p className="text-xs text-gray-400 mt-2">
+                Tiempo de enfoque asociado explícitamente a una tarea de la
+                lista.
+              </p>
+            </article>
+
+            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
+              <h2 className="text-sm font-semibold mb-2">
+                Tareas completadas
+              </h2>
+              <p className="text-3xl font-bold">
+                {stats.tasksCompleted}
+              </p>
+              <p className="text-xs text-gray-400 mt-2">
+                Tareas marcadas como completadas en el gestor.
+              </p>
+            </article>
+
+            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] sm:col-span-2">
+              <h2 className="text-sm font-semibold mb-2">
+                Racha de estudio
+              </h2>
+              <p className="text-3xl font-bold">
+                {stats.weekStreak} días
+              </p>
+              <p className="text-xs text-gray-400 mt-2">
+                Días consecutivos (empezando hoy) con al menos una sesión de
+                Pomodoro.
               </p>
             </article>
           </section>
 
-          {/* Gráfico: últimos X días con toggle Minutos/Horas y 7/30 días */}
-          <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
+          {/* Gráfico: últimos 7 días */}
+          <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] mb-2">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h2 className="text-sm font-semibold text-soft">
-                  Enfoque (últimos {rangeDays} días)
+                <h2 className="text-sm font-semibold">
+                  Enfoque (últimos 7 días)
                 </h2>
-                <p className="text-xs text-muted">
+                <p className="text-xs text-gray-400">
                   Suma diaria de tiempo de estudio registrado con el Pomodoro.
                 </p>
               </div>
-              <div className="flex gap-2">
-                <div className="inline-flex rounded-full border border-[var(--card-border)] text-xs overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setTimeUnit('minutes')}
-                    className={`px-3 py-1 ${
-                      timeUnit === 'minutes'
-                        ? 'bg-[var(--accent-soft)] text-[var(--primary)]'
-                        : 'text-muted'
-                    }`}
-                  >
-                    Minutos
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTimeUnit('hours')}
-                    className={`px-3 py-1 ${
-                      timeUnit === 'hours'
-                        ? 'bg-[var(--accent-soft)] text-[var(--primary)]'
-                        : 'text-muted'
-                    }`}
-                  >
-                    Horas
-                  </button>
-                </div>
-
-                <div className="inline-flex rounded-full border border-[var(--card-border)] text-xs overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setRangeDays(7)}
-                    className={`px-3 py-1 ${
-                      rangeDays === 7
-                        ? 'bg-[var(--accent-soft)] text-[var(--primary)]'
-                        : 'text-muted'
-                    }`}
-                  >
-                    7 días
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRangeDays(30)}
-                    className={`px-3 py-1 ${
-                      rangeDays === 30
-                        ? 'bg-[var(--accent-soft)] text-[var(--primary)]'
-                        : 'text-muted'
-                    }`}
-                  >
-                    30 días
-                  </button>
-                </div>
+              <div className="inline-flex text-xs border border-[var(--card-border)] rounded-full overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setTimeUnit('minutes')}
+                  className={`px-3 py-1 ${
+                    timeUnit === 'minutes'
+                      ? 'bg-[var(--accent)] text-[var(--foreground)]'
+                      : 'bg-transparent'
+                  }`}
+                >
+                  Minutos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTimeUnit('hours')}
+                  className={`px-3 py-1 ${
+                    timeUnit === 'hours'
+                      ? 'bg-[var(--accent)] text-[var(--foreground)]'
+                      : 'bg-transparent'
+                  }`}
+                >
+                  Horas
+                </button>
               </div>
             </div>
 
-            {dailyData.every((p) => p.minutes === 0) ? (
-              <p className="text-sm text-muted">
-                Aún no hay sesiones de Pomodoro registradas en los últimos
-                días.
+            {chartData.every((p) => p.value === 0) ? (
+              <p className="text-sm text-gray-400">
+                Aún no hay sesiones de Pomodoro registradas en los últimos días.
               </p>
             ) : (
               <div className="w-full h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                    <XAxis dataKey="label" fontSize={11} />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 11 }}
+                      axisLine={false}
+                    />
                     <YAxis
                       fontSize={11}
-                       tickFormatter={(value) => {
-                          const num = Number(value);
-                          if (isNaN(num)) return value; // Evita crasheos si Recharts envía texto raro
-                          return timeUnit === 'minutes' ? num : num.toFixed(1);
-                       }}
+                      tickFormatter={(value) => {
+                        const num = Number(value);
+                        if (isNaN(num)) return value;
+                        return timeUnit === 'minutes'
+                          ? num
+                          : num.toFixed(1);
+                      }}
                     />
-                    <Tooltip content={renderTooltip} />
-                    <Bar dataKey="value" fill="var(--accent)" />
+                    <Tooltip
+                      formatter={(value) => {
+                        const num = Number(value);
+                        if (isNaN(num)) return value as string;
+                        return timeUnit === 'minutes'
+                          ? `${num.toFixed(0)} min`
+                          : `${num.toFixed(2)} h`;
+                      }}
+                    />
+                    <Bar dataKey="value" fill={chartFillColor(theme)} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             )}
+          </section>
 
-            {bestDay && (
-              <p className="mt-3 text-xs text-muted">
-                Día más productivo:{" "}
-                <span className="font-semibold text-soft">
-                  {bestDay.label}
-                </span>{" "}
-                con{" "}
-                <span className="font-semibold text-soft">
-                  {bestDay.minutes} min
-                </span>{" "}
-                de enfoque.
+          {/* Notas por materia */}
+          <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
+            <h2 className="text-sm font-semibold mb-1">
+              Notas por materia
+            </h2>
+            <p className="text-xs text-gray-400 mb-3">
+              Promedios de exámenes registrados en la sección &quot;Notas de
+              exámenes&quot;.
+            </p>
+
+            {courseAverages.length === 0 ? (
+              <p className="text-sm text-gray-400">
+                Todavía no hay notas registradas. Cargue notas en la sección
+                &quot;Notas de exámenes&quot; para ver su rendimiento académico
+                por materia.
               </p>
+            ) : (
+              <>
+                <div className="w-full h-64 mb-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={courseAverages}
+                      margin={{ top: 10, right: 20, bottom: 60, left: 20 }}  
+                    >
+
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                      <XAxis
+                          dataKey="courseName"
+                          tick={{ fontSize: 12 }}
+                          interval={0}
+                          angle={-25}             
+                          textAnchor="end"
+                          dy={10}                 
+                      />
+
+                      <YAxis
+                        domain={[0, 10]}
+                        tick={{ fontSize: 11 }}
+                        tickFormatter={(value) => {
+                          const num = Number(value);
+                          if (isNaN(num)) return value;
+                          return num.toFixed(1);
+                        }}
+                      />
+                      <Tooltip
+                        formatter={(value, _name, props) => {
+                          const num = Number(value);
+                          const label = props?.payload?.courseName ?? 'Materia';
+                          if (isNaN(num)) return value as string;
+                          return [`${num.toFixed(2)}`, label];
+                        }}
+                      />
+                      <Bar
+                       dataKey="average"
+                       radius={[4, 4, 0, 0]}
+                        fill={chartFillColor(theme)}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <ul className="text-sm text-gray-300 space-y-1">
+                  {courseAverages.map((c) => (
+                    <li
+                      key={c.courseId}
+                      className="flex items-center justify-between border border-[var(--card-border)] rounded-md px-3 py-2 bg-[var(--card-bg)]"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-semibold">
+                          {c.courseName}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {c.count} examen{c.count !== 1 && 'es'} registrados
+                        </span>
+                      </div>
+                      <span
+                        className="text-sm font-semibold"
+                        style={{ color: gradeColor(c.average) }}
+                      >
+                        {c.average.toFixed(2)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </section>
 
-          {/* Ranking de tareas con más minutos de enfoque */}
-          <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] mb-6">
-            <h2 className="text-sm font-semibold mb-3 text-soft">
-              Tareas con más minutos de enfoque
-            </h2>
-
-            {topFocusedTasks.length === 0 ? (
-              <p className="text-sm text-muted">
-                Aún no hay sesiones de Pomodoro vinculadas a tareas. Desde el
-                módulo de Pomodoro puede asociar cada sesión a una tarea para
-                ver este ranking.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-2 text-sm">
-                {topFocusedTasks.map((t) => (
-                  <li
-                    key={t.id}
-                    className="flex items-center justify-between border border-[var(--card-border)] rounded-md px-3 py-2 bg-[var(--card-bg)]"
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium">{t.title}</span>
-                      <span className="text-[11px] text-muted">
-                        {t.completed ? 'Completada' : 'Pendiente'}
-                      </span>
-                    </div>
-                    <span className="text-xs font-semibold text-soft">
-                      {t.minutes} min
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+          {/* Próximos pasos */}
+          <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
+            <h2 className="text-sm font-semibold mb-2">Próximos pasos</h2>
+            <ul className="list-disc list-inside text-sm text-gray-300">
+              <li>
+                Mostrar ranking de tareas según los minutos de enfoque
+                acumulados.
+              </li>
+              <li>
+                Agregar gráficos de evolución por materia o curso (promedio por
+                cuatrimestre).
+              </li>
+              <li>
+                Incorporar logros según rachas, objetivos cumplidos y notas
+                alcanzadas.
+              </li>
+            </ul>
           </section>
         </>
       )}
