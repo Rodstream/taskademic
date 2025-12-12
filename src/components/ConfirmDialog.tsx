@@ -5,7 +5,7 @@ import React from 'react';
 type ConfirmDialogProps = {
   open: boolean;
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   loading?: boolean;

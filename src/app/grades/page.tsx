@@ -50,7 +50,8 @@ function gradeBadgeClasses(grade: number): string {
 
 // Texto para la etiqueta de estado
 function gradeStatusLabel(grade: number): string {
-  if (grade >= 8) return 'Muy buena';
+  if (grade >= 10) return 'Excelente';
+  if (grade >= 8) return 'Muy bien';
   if (grade >= 6) return 'Aprobado';
   if (grade >= 4) return 'En riesgo';
   return 'Desaprobado';

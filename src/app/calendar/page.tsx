@@ -87,11 +87,12 @@ export default function CalendarPage() {
         .eq('user_id', user.id);
 
       if (tasksError) {
-        console.error(tasksError);
         setError('No se pudieron cargar las tareas.');
+        return;
       } else {
         setTasks((tasksData ?? []) as Task[]);
       }
+      
 
       const { data: sessionsData, error: sessionsError } = await supabaseClient
         .from('pomodoro_sessions')

@@ -119,10 +119,11 @@ export default function ProfilePage() {
     setSavingProfile(false);
 
     if (error) {
-      console.error(error);
-      setErrorProfile('No se pudo guardar el perfil.');
-      return;
-    }
+  // En dev se podría loguear con console.warn si realmente hace falta
+  setErrorProfile('No se pudo guardar el perfil.');
+  return;
+}
+
 
     setInfoProfile('Perfil actualizado correctamente.');
     setEditingProfile(false);
@@ -231,6 +232,7 @@ export default function ProfilePage() {
       {/* ============================
           DATOS DEL USUARIO
       ============================ */}
+      
       <section className="border border-[var(--card-border)] rounded-lg bg-[var(--card-bg)] p-4">
         <h2 className="text-lg font-semibold mb-4">Datos del usuario</h2>
 
@@ -255,24 +257,46 @@ export default function ProfilePage() {
             )}
           </div>
 
-        {/* Nombre + resumen académico */}
-          <div className="flex flex-col">
-            <p className="text-sm font-semibold">
+          {/* Nombre + chips académicos */}
+          <div className="flex flex-col gap-1 min-w-0">
+            <p className="text-sm font-semibold truncate">
               {fullName || user?.email || 'Usuario de Taskademic'}
             </p>
 
-            <p className="text-xs text-gray-400">
-              {career || academicYear ? (
-                <>
-                  {career && <>Estudiando: {career}</>}
-                  {career && academicYear && ' · '}
-                  {!career && academicYear && <>Año/Cuatrimestre: </>}
-                  {academicYear}
-                </>
-              ) : (
-                'Puede completar su carrera y año/cuatrimestre en el perfil.'
+            <div className="flex flex-wrap gap-2 mt-1">
+              {career && (
+                <span
+                  className="
+                    px-2 py-0.5 rounded-full text-xs
+                    bg-[var(--card-border)]/40
+                    text-[var(--text-soft)]
+                    whitespace-nowrap
+                  "
+                >
+                  {career}
+                </span>
               )}
-            </p>
+
+              {academicYear && (
+                <span
+                  className="
+                    px-2 py-0.5 rounded-full text-xs
+                    bg-[var(--accent-soft)]/40
+                    text-[var(--text-soft)]
+                    whitespace-nowrap
+                  "
+                >
+                  {`Año / cuatrimestre: ${academicYear}`}
+                </span>
+              )}
+
+              {/* Mensaje si no hay datos cargados */}
+              {!career && !academicYear && (
+                <span className="text-xs text-gray-400">
+                  Puede completar carrera y año/cuatrimestre en el perfil.
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
