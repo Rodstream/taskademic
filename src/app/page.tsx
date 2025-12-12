@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { supabaseClient } from '@/lib/supabaseClient';
+import { useTheme } from '@/context/ThemeContext';
 import {
   ResponsiveContainer,
   BarChart,
@@ -17,6 +18,7 @@ import {
 import { FaClipboardList, FaClock, FaChartBar } from 'react-icons/fa';
 
 type Priority = 'low' | 'medium' | 'high';
+type PriorityFilter = 'all' | Priority;
 
 type TaskSummary = {
   id: string;
@@ -41,6 +43,7 @@ type DailyPoint = {
 
 export default function HomePage() {
   const { user, loading } = useAuth();
+  const { theme } = useTheme();
 
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +51,12 @@ export default function HomePage() {
   const [pendingCount, setPendingCount] = useState(0);
   const [overdueCount, setOverdueCount] = useState(0);
   const [focusLast7, setFocusLast7] = useState(0);
-  const [upcomingTasks, setUpcomingTasks] = useState<TaskSummary[]>([]);
+
+  // guardo una lista base (ordenada por fecha) y luego filtro por prioridad en UI
+  const [upcomingTasksBase, setUpcomingTasksBase] = useState<TaskSummary[]>([]);
+  const [upcomingPriorityFilter, setUpcomingPriorityFilter] =
+    useState<PriorityFilter>('all');
+
   const [dailyFocus, setDailyFocus] = useState<DailyPoint[]>([]);
 
   useEffect(() => {
@@ -81,6 +89,7 @@ export default function HomePage() {
           (t) => t.due_date !== null && t.due_date < todayStr,
         );
 
+        // Orden por fecha límite (sin fecha al final)
         const upcomingSorted = [...pending].sort((a, b) => {
           if (!a.due_date && !b.due_date) return 0;
           if (!a.due_date) return 1;
@@ -90,17 +99,14 @@ export default function HomePage() {
 
         setPendingCount(pending.length);
         setOverdueCount(overdue.length);
-        setUpcomingTasks(upcomingSorted.slice(0, 5));
+        setUpcomingTasksBase(upcomingSorted);
 
         // ---- POMODORO ÚLTIMOS 7 DÍAS ----
         const since = new Date();
         since.setDate(since.getDate() - 6);
         const sinceStr = since.toISOString();
 
-        const {
-          data: sessionsData,
-          error: sessionsError,
-        } = await supabaseClient
+        const { data: sessionsData, error: sessionsError } = await supabaseClient
           .from('pomodoro_sessions')
           .select('id, user_id, started_at, duration_minutes')
           .eq('user_id', user.id)
@@ -154,10 +160,27 @@ export default function HomePage() {
     () =>
       pendingCount > 0 ||
       focusLast7 > 0 ||
-      upcomingTasks.length > 0 ||
+      upcomingTasksBase.length > 0 ||
       dailyFocus.some((p) => p.minutes > 0),
-    [pendingCount, focusLast7, upcomingTasks, dailyFocus],
+    [pendingCount, focusLast7, upcomingTasksBase, dailyFocus],
   );
+
+  // filtro por prioridad en UI y muestro top 5
+  const upcomingTasks = useMemo(() => {
+    const filtered =
+      upcomingPriorityFilter === 'all'
+        ? upcomingTasksBase
+        : upcomingTasksBase.filter(
+            (t) => (t.priority ?? 'medium') === upcomingPriorityFilter,
+          );
+
+    return filtered.slice(0, 5);
+  }, [upcomingTasksBase, upcomingPriorityFilter]);
+
+  // color de barras como Rendimiento:
+  // claro -> lila (primary-soft), oscuro -> naranja (accent)
+  const barFill =
+    theme === 'dark' ? 'var(--accent)' : 'var(--primary-soft)';
 
   if (loading) {
     return (
@@ -178,7 +201,6 @@ export default function HomePage() {
           id="acerca-de"
           className="flex flex-col items-center text-center gap-5"
         >
-          {/* Logo + chip */}
           <div className="flex flex-col items-center gap-2">
             <img
               src="/taskademic-logo.svg"
@@ -190,9 +212,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <h1 className="text-3xl sm:text-4xl font-bold">
-            Taskademic
-          </h1>
+          <h1 className="text-3xl sm:text-4xl font-bold">Taskademic</h1>
 
           <p className="max-w-2xl text-sm sm:text-base text-soft leading-relaxed">
             Taskademic es una plataforma pensada para que estudiantes
@@ -241,9 +261,7 @@ export default function HomePage() {
               <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--accent-soft)]">
                 <FaClipboardList className="text-[var(--primary)]" />
               </div>
-              <h3 className="font-semibold text-sm">
-                Organizar tareas
-              </h3>
+              <h3 className="font-semibold text-sm">Organizar tareas</h3>
               <p className="text-xs sm:text-sm text-soft leading-relaxed">
                 Registre trabajos prácticos, parciales, finales y otras
                 entregas. Asigne fecha límite, prioridad, etiquetas y
@@ -255,9 +273,7 @@ export default function HomePage() {
               <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--accent-soft)]">
                 <FaClock className="text-[var(--primary)]" />
               </div>
-              <h3 className="font-semibold text-sm">
-                Planificar el estudio
-              </h3>
+              <h3 className="font-semibold text-sm">Planificar el estudio</h3>
               <p className="text-xs sm:text-sm text-soft leading-relaxed">
                 Use un temporizador Pomodoro integrado y un calendario que
                 muestra las tareas en el tiempo, para decidir qué estudiar
@@ -269,9 +285,7 @@ export default function HomePage() {
               <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--accent-soft)]">
                 <FaChartBar className="text-[var(--primary)]" />
               </div>
-              <h3 className="font-semibold text-sm">
-                Medir el rendimiento
-              </h3>
+              <h3 className="font-semibold text-sm">Medir el rendimiento</h3>
               <p className="text-xs sm:text-sm text-soft leading-relaxed">
                 Visualice minutos de enfoque, rachas de estudio y tareas
                 completadas para ver, con datos, cómo avanza a lo largo del
@@ -281,84 +295,77 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* CÓMO FUNCIONA – LAYOUT 2 COLUMNAS */}
+        {/* ACERCA DE (sin cuadro, sin botones) */}
         <section
-          id="como-funciona"
-          className="flex flex-col md:flex-row gap-8 md:items-start"
+          id="acerca-de-extra"
+          className="flex flex-col items-center text-center gap-3"
         >
-          <div className="md:w-1/2 flex flex-col gap-3">
-            <h2 className="text-2xl font-semibold">
-              ¿Cómo funciona en la práctica?
-            </h2>
-            <p className="text-sm sm:text-base text-soft leading-relaxed">
-              El uso diario de Taskademic se basa en una rutina sencilla:
-              registrar, planificar, estudiar y revisar. La idea es que el
-              estudiante tenga una estructura clara sin perder flexibilidad.
-            </p>
-            <p className="text-sm sm:text-base text-soft leading-relaxed">
-              Cada tarea, sesión de estudio y materia queda conectada, de
-              modo que el tiempo dedicado a la cursada se vea reflejado en
-              un panel de progreso.
-            </p>
-          </div>
+          <h2 className="text-2xl font-semibold">Acerca de</h2>
 
-          <div className="md:w-1/2">
-            <ol className="list-decimal list-inside text-sm sm:text-base text-soft leading-relaxed space-y-2 border border-[var(--card-border)] rounded-xl p-4 bg-[var(--card-bg)]">
-              <li>
-                Registrar materias y asignar un color a cada una para
-                identificarlas fácilmente.
-              </li>
-              <li>
-                Cargar tareas asociadas a esas materias indicando título,
-                fecha límite, prioridad y tipo de trabajo.
-              </li>
-              <li>
-                Iniciar sesiones de enfoque con el Pomodoro y vincularlas
-                a tareas concretas, registrando el tiempo real de estudio.
-              </li>
-              <li>
-                Consultar el panel de rendimiento para ver minutos de
-                enfoque, rachas de estudio y tareas completadas.
-              </li>
-            </ol>
-          </div>
+          <p className="max-w-3xl text-sm sm:text-base text-soft leading-relaxed">
+            Taskademic busca centralizar la cursada en un solo lugar, priorizando
+            una experiencia simple y rápida: registrar tareas, planificar el
+            estudio y medir el avance con datos concretos.
+          </p>
+
+          <p className="max-w-3xl text-sm sm:text-base text-muted leading-relaxed">
+            El objetivo es reducir la fricción diaria del estudiante, evitando
+            depender de múltiples aplicaciones para organizar entregas, calendarios
+            y sesiones de estudio.
+          </p>
         </section>
 
-        {/* BENEFICIOS – BLOQUE FINAL */}
-        <section id="beneficios" className="flex flex-col gap-4 mb-8">
-          <h2 className="text-2xl font-semibold">
-            Diseñada para la vida académica real
-          </h2>
-          <p className="text-sm sm:text-base text-soft leading-relaxed">
-            Cursar varias materias a la vez implica entregas, parciales y
-            proyectos que se superponen. Taskademic busca reducir esa
-            sensación de caos ofreciendo:
+        {/* CONTACTO (sin cuadro, con formulario) */}
+        <section
+          id="contacto"
+          className="flex flex-col items-center text-center gap-4"
+        >
+          <h2 className="text-2xl font-semibold">Contacto</h2>
+
+          <p className="max-w-3xl text-sm sm:text-base text-soft leading-relaxed">
+            Para consultas, sugerencias o reportes, se recomienda enviar un mensaje.
           </p>
 
-          <div className="border border-[var(--card-border)] rounded-xl p-4 bg-[var(--card-bg)]">
-            <ul className="list-disc list-inside text-sm sm:text-base text-soft leading-relaxed space-y-1">
-              <li>
-                Una vista unificada de todas las tareas y fechas clave.
-              </li>
-              <li>
-                Una forma sencilla de priorizar qué hacer hoy, mañana o
-                esta semana.
-              </li>
-              <li>
-                Un registro objetivo del tiempo dedicado al estudio, materia
-                por materia.
-              </li>
-              <li>
-                Un panel de progreso que ayuda a ajustar el ritmo antes de
-                que lleguen los exámenes.
-              </li>
-            </ul>
-          </div>
+          <form
+            className="w-full max-w-xl flex flex-col gap-3 text-left"
+            onSubmit={(e) => {
+              e.preventDefault();
+              alert('Mensaje enviado (placeholder)');
+            }}
+          >
+            <label className="flex flex-col gap-1">
+              <span className="text-sm text-soft">Correo</span>
+              <input
+                type="email"
+                required
+                placeholder="correo@ejemplo.com"
+                className="border border-[var(--card-border)] rounded-md px-3 py-2 text-sm bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+              />
+            </label>
 
-          <p className="text-sm sm:text-base text-soft leading-relaxed">
-            Todo con una interfaz cuidada, pensada para acompañar la cursada
-            en el día a día sin agregar más ruido a la cabeza del estudiante.
-          </p>
+            <label className="flex flex-col gap-1">
+              <span className="text-sm text-soft">Mensaje</span>
+              <textarea
+                required
+                rows={4}
+                placeholder="Escriba su consulta..."
+                className="border border-[var(--card-border)] rounded-md px-3 py-2 text-sm bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+              />
+            </label>
+
+            <div className="flex justify-center pt-1">
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-md bg-[var(--accent)] text-[var(--foreground)] text-sm font-semibold"
+              >
+                Enviar
+              </button>
+            </div>
+
+            <p className="text-[11px] text-muted text-center mt-1">
+              Más adelante se conectará este formulario a un envío real de correos.
+            </p>
+          </form>
         </section>
       </main>
     );
@@ -371,9 +378,7 @@ export default function HomePage() {
     <main className="max-w-5xl mx-auto px-4 py-8 flex flex-col gap-6">
       <header className="mb-2">
         <h1 className="text-2xl font-bold mb-1">Bienvenido a Taskademic</h1>
-        <p className="text-sm text-muted">
-          Un resumen rápido de su semana académica.
-        </p>
+        <p className="text-sm text-muted">Un resumen rápido de su semana académica.</p>
       </header>
 
       {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
@@ -381,29 +386,19 @@ export default function HomePage() {
       {/* Tarjetas de métricas rápidas */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-          <h2 className="text-xs font-semibold mb-1 text-soft">
-            Tareas pendientes
-          </h2>
+          <h2 className="text-xs font-semibold mb-1 text-soft">Tareas pendientes</h2>
           <p className="text-3xl font-bold">{pendingCount}</p>
-          <p className="text-[11px] text-muted mt-2">
-            Total de tareas aún sin completar.
-          </p>
+          <p className="text-[11px] text-muted mt-2">Total de tareas aún sin completar.</p>
         </article>
 
         <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-          <h2 className="text-xs font-semibold mb-1 text-soft">
-            Tareas vencidas
-          </h2>
+          <h2 className="text-xs font-semibold mb-1 text-soft">Tareas vencidas</h2>
           <p className="text-3xl font-bold">{overdueCount}</p>
-          <p className="text-[11px] text-muted mt-2">
-            Tareas cuya fecha límite ya pasó.
-          </p>
+          <p className="text-[11px] text-muted mt-2">Tareas cuya fecha límite ya pasó.</p>
         </article>
 
         <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-          <h2 className="text-xs font-semibold mb-1 text-soft">
-            Minutos de enfoque (7 días)
-          </h2>
+          <h2 className="text-xs font-semibold mb-1 text-soft">Minutos de enfoque (7 días)</h2>
           <p className="text-3xl font-bold">{focusLast7}</p>
           <p className="text-[11px] text-muted mt-2">
             Tiempo total de estudio registrado con Pomodoro.
@@ -418,13 +413,10 @@ export default function HomePage() {
         </h2>
 
         {dashboardLoading ? (
-          <p className="text-sm text-muted">
-            Cargando datos de estudio...
-          </p>
+          <p className="text-sm text-muted">Cargando datos de estudio...</p>
         ) : dailyFocus.every((p) => p.minutes === 0) ? (
           <p className="text-sm text-muted">
-            Aún no hay sesiones de Pomodoro registradas en los últimos
-            días.
+            Aún no hay sesiones de Pomodoro registradas en los últimos días.
           </p>
         ) : (
           <div className="w-full h-56">
@@ -434,7 +426,7 @@ export default function HomePage() {
                 <XAxis dataKey="label" fontSize={11} />
                 <YAxis fontSize={11} />
                 <Tooltip />
-                <Bar dataKey="minutes" />
+                <Bar dataKey="minutes" fill={barFill} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -443,9 +435,7 @@ export default function HomePage() {
 
       {/* Accesos rápidos */}
       <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-        <h2 className="text-sm font-semibold mb-3 text-soft">
-          Accesos rápidos
-        </h2>
+        <h2 className="text-sm font-semibold mb-3 text-soft">Accesos rápidos</h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-sm">
           <Link
@@ -453,9 +443,7 @@ export default function HomePage() {
             className="border border-[var(--card-border)] rounded-md px-3 py-2 hover:bg-white/10 flex flex-col"
           >
             <span className="font-semibold mb-1">Gestionar tareas</span>
-            <span className="text-[11px] text-muted">
-              Cree, edite y organice sus pendientes.
-            </span>
+            <span className="text-[11px] text-muted">Cree, edite y organice sus pendientes.</span>
           </Link>
 
           <Link
@@ -463,9 +451,7 @@ export default function HomePage() {
             className="border border-[var(--card-border)] rounded-md px-3 py-2 hover:bg-white/10 flex flex-col"
           >
             <span className="font-semibold mb-1">Iniciar Pomodoro</span>
-            <span className="text-[11px] text-muted">
-              Registre sesiones de estudio con enfoque.
-            </span>
+            <span className="text-[11px] text-muted">Registre sesiones de estudio con enfoque.</span>
           </Link>
 
           <Link
@@ -473,9 +459,7 @@ export default function HomePage() {
             className="border border-[var(--card-border)] rounded-md px-3 py-2 hover:bg-white/10 flex flex-col"
           >
             <span className="font-semibold mb-1">Ver calendario</span>
-            <span className="text-[11px] text-muted">
-              Visualice sus tareas en el calendario.
-            </span>
+            <span className="text-[11px] text-muted">Visualice sus tareas en el calendario.</span>
           </Link>
 
           <Link
@@ -483,21 +467,35 @@ export default function HomePage() {
             className="border border-[var(--card-border)] rounded-md px-3 py-2 hover:bg-white/10 flex flex-col"
           >
             <span className="font-semibold mb-1">Ver rendimiento</span>
-            <span className="text-[11px] text-muted">
-              Revise estadísticas y logros de estudio.
-            </span>
+            <span className="text-[11px] text-muted">Revise estadísticas y logros de estudio.</span>
           </Link>
         </div>
       </section>
 
       {/* Próximas tareas */}
       <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-soft">Próximas tareas</h2>
-          <Link
-            href="/tasks"
-            className="text-xs text-[var(--accent)] hover:underline"
-          >
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-semibold text-soft">Próximas tareas</h2>
+
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <span>Prioridad:</span>
+              <select
+                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-[var(--card-bg)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                value={upcomingPriorityFilter}
+                onChange={(e) =>
+                  setUpcomingPriorityFilter(e.target.value as PriorityFilter)
+                }
+              >
+                <option value="all">Todas</option>
+                <option value="high">Alta</option>
+                <option value="medium">Media</option>
+                <option value="low">Baja</option>
+              </select>
+            </label>
+          </div>
+
+          <Link href="/tasks" className="text-xs text-[var(--accent)] hover:underline">
             Ver todas
           </Link>
         </div>
@@ -506,13 +504,11 @@ export default function HomePage() {
           <p className="text-sm text-muted">Cargando tareas...</p>
         ) : !hasData ? (
           <p className="text-sm text-muted">
-            No hay datos suficientes todavía. Cree algunas tareas o
-            registre sesiones de Pomodoro para ver más información aquí.
+            No hay datos suficientes todavía. Cree algunas tareas o registre sesiones de Pomodoro.
           </p>
         ) : upcomingTasks.length === 0 ? (
           <p className="text-sm text-muted">
-            No hay tareas pendientes próximas. Revise el gestor de tareas
-            para más detalles.
+            No hay tareas pendientes para la prioridad seleccionada.
           </p>
         ) : (
           <ul className="flex flex-col gap-2 text-sm">
@@ -541,9 +537,7 @@ export default function HomePage() {
                       </span>
                     )}
                   </div>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] ${priorityClass}`}
-                  >
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] ${priorityClass}`}>
                     Prioridad: {priorityLabel}
                   </span>
                 </li>

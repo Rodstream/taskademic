@@ -35,6 +35,15 @@ type Course = {
 
 type Filter = 'all' | 'pending' | 'completed';
 type PriorityFilter = 'all' | Priority;
+type DateOrder = 'nearest' | 'farthest';
+
+type Subtask = {
+  id: string;
+  task_id: string;
+  title: string;
+  completed: boolean;
+  created_at: string;
+};
 
 export default function TasksPage() {
   const { user, loading } = useAuth();
@@ -51,8 +60,7 @@ export default function TasksPage() {
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [newTaskCourseId, setNewTaskCourseId] = useState<string>('none');
-  const [newTaskPriority, setNewTaskPriority] =
-    useState<Priority>('medium');
+  const [newTaskPriority, setNewTaskPriority] = useState<Priority>('medium');
   const [newTaskTags, setNewTaskTags] = useState('');
 
   const [error, setError] = useState<string | null>(null);
@@ -60,13 +68,11 @@ export default function TasksPage() {
   // Filtros
   const [filter, setFilter] = useState<Filter>('all');
   const [filterCourseId, setFilterCourseId] = useState<string>('all');
-  const [filterPriority, setFilterPriority] =
-    useState<PriorityFilter>('all');
+  const [filterPriority, setFilterPriority] = useState<PriorityFilter>('all');
+  const [dateOrder, setDateOrder] = useState<DateOrder>('nearest');
 
   // estados para confirmaciones
-  const [taskToDelete, setTaskToDelete] = useState<TaskWithStats | null>(
-    null,
-  );
+  const [taskToDelete, setTaskToDelete] = useState<TaskWithStats | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const [showClearCompleted, setShowClearCompleted] = useState(false);
@@ -80,10 +86,26 @@ export default function TasksPage() {
   const [editDescription, setEditDescription] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
   const [editCourseId, setEditCourseId] = useState<string>('none');
-  const [editPriority, setEditPriority] =
-    useState<Priority>('medium');
+  const [editPriority, setEditPriority] = useState<Priority>('medium');
   const [editTags, setEditTags] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // ---- Subtasks state (checklist) ----
+  const [expandedSubtasks, setExpandedSubtasks] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [subtasksByTaskId, setSubtasksByTaskId] = useState<
+    Record<string, Subtask[]>
+  >({});
+  const [subtasksLoadingByTaskId, setSubtasksLoadingByTaskId] = useState<
+    Record<string, boolean>
+  >({});
+  const [newSubtaskTitleByTaskId, setNewSubtaskTitleByTaskId] = useState<
+    Record<string, string>
+  >({});
+  const [subtaskCountsByTaskId, setSubtaskCountsByTaskId] = useState<
+    Record<string, { total: number; done: number }>
+  >({});
 
   // Proteger ruta
   useEffect(() => {
@@ -116,7 +138,7 @@ export default function TasksPage() {
     fetchCourses();
   }, [user]);
 
-  // Cargar tareas + minutos de Pomodoro por tarea
+  // Cargar tareas + minutos de Pomodoro por tarea (+ counts de subtareas)
   useEffect(() => {
     if (!user) return;
 
@@ -145,9 +167,7 @@ export default function TasksPage() {
         .eq('user_id', user.id)
         .not('task_id', 'is', null);
 
-      if (sessionsError) {
-        console.error(sessionsError);
-      }
+      if (sessionsError) console.error(sessionsError);
 
       const minutesByTask = new Map<string, number>();
       (sessionsData ?? []).forEach((s: any) => {
@@ -163,6 +183,34 @@ export default function TasksPage() {
       }));
 
       setTasks(withStats);
+
+      // counts de subtareas (si la tabla existe y hay permisos)
+      try {
+        const taskIds = baseTasks.map((t) => t.id);
+        if (taskIds.length > 0) {
+          const { data: stData, error: stError } = await supabaseClient
+            .from('task_subtasks')
+            .select('task_id, completed')
+            .in('task_id', taskIds);
+
+          if (stError) {
+            console.error(stError);
+          } else {
+            const counts: Record<string, { total: number; done: number }> = {};
+            (stData ?? []).forEach((row: any) => {
+              const tid = row.task_id as string;
+              const completed = !!row.completed;
+              if (!counts[tid]) counts[tid] = { total: 0, done: 0 };
+              counts[tid].total += 1;
+              if (completed) counts[tid].done += 1;
+            });
+            setSubtaskCountsByTaskId(counts);
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+
       setLoadingTasks(false);
     };
 
@@ -177,12 +225,9 @@ export default function TasksPage() {
     setError(null);
 
     const courseIdToSave =
-      newTaskCourseId && newTaskCourseId !== 'none'
-        ? newTaskCourseId
-        : null;
+      newTaskCourseId && newTaskCourseId !== 'none' ? newTaskCourseId : null;
 
-    const tagsToSave =
-      newTaskTags.trim().length > 0 ? newTaskTags.trim() : null;
+    const tagsToSave = newTaskTags.trim().length > 0 ? newTaskTags.trim() : null;
 
     const { data, error } = await supabaseClient
       .from('tasks')
@@ -233,9 +278,7 @@ export default function TasksPage() {
 
     setTasks((prev) =>
       prev.map((t) =>
-        t.id === task.id
-          ? { ...updated, focusMinutes: task.focusMinutes }
-          : t,
+        t.id === task.id ? { ...updated, focusMinutes: task.focusMinutes } : t,
       ),
     );
   };
@@ -244,10 +287,7 @@ export default function TasksPage() {
   const courseMap = useMemo(
     () =>
       new Map(
-        courses.map((c) => [
-          c.id,
-          { name: c.name, color: c.color },
-        ]),
+        courses.map((c) => [c.id, { name: c.name, color: c.color }]),
       ),
     [courses],
   );
@@ -283,12 +323,9 @@ export default function TasksPage() {
     }
 
     const courseIdToSave =
-      editCourseId && editCourseId !== 'none'
-        ? editCourseId
-        : null;
+      editCourseId && editCourseId !== 'none' ? editCourseId : null;
 
-    const tagsToSave =
-      editTags.trim().length > 0 ? editTags.trim() : null;
+    const tagsToSave = editTags.trim().length > 0 ? editTags.trim() : null;
 
     setSavingEdit(true);
     const { data, error } = await supabaseClient
@@ -350,6 +387,23 @@ export default function TasksPage() {
       return;
     }
 
+    // limpiar caches de subtareas
+    setSubtasksByTaskId((prev) => {
+      const next = { ...prev };
+      delete next[taskToDelete.id];
+      return next;
+    });
+    setSubtaskCountsByTaskId((prev) => {
+      const next = { ...prev };
+      delete next[taskToDelete.id];
+      return next;
+    });
+    setExpandedSubtasks((prev) => {
+      const next = new Set(prev);
+      next.delete(taskToDelete.id);
+      return next;
+    });
+
     setTasks((prev) => prev.filter((t) => t.id !== taskToDelete.id));
     setTaskToDelete(null);
   };
@@ -359,10 +413,7 @@ export default function TasksPage() {
   };
 
   // ---- Limpiar completadas ----
-  const hasCompleted = useMemo(
-    () => tasks.some((t) => t.completed),
-    [tasks],
-  );
+  const hasCompleted = useMemo(() => tasks.some((t) => t.completed), [tasks]);
 
   const askClearCompleted = () => {
     if (!hasCompleted) return;
@@ -390,6 +441,29 @@ export default function TasksPage() {
       setError('No se pudieron limpiar las tareas completadas');
       return;
     }
+
+    const remaining = tasks.filter((t) => !t.completed).map((t) => t.id);
+    setSubtasksByTaskId((prev) => {
+      const next: Record<string, Subtask[]> = {};
+      for (const id of remaining) {
+        if (prev[id]) next[id] = prev[id];
+      }
+      return next;
+    });
+    setSubtaskCountsByTaskId((prev) => {
+      const next: Record<string, { total: number; done: number }> = {};
+      for (const id of remaining) {
+        if (prev[id]) next[id] = prev[id];
+      }
+      return next;
+    });
+    setExpandedSubtasks((prev) => {
+      const next = new Set<string>();
+      for (const id of remaining) {
+        if (prev.has(id)) next.add(id);
+      }
+      return next;
+    });
 
     setTasks((prev) => prev.filter((t) => !t.completed));
     setShowClearCompleted(false);
@@ -448,9 +522,177 @@ export default function TasksPage() {
       .filter((t) => t.length > 0);
   };
 
-  // Aplicar filtro
+  // ---- Subtasks helpers ----
+  const ensureSubtasksLoaded = async (taskId: string) => {
+    if (!user) return;
+    if (subtasksByTaskId[taskId]) return;
+    if (subtasksLoadingByTaskId[taskId]) return;
+
+    setSubtasksLoadingByTaskId((prev) => ({ ...prev, [taskId]: true }));
+    setError(null);
+
+    const { data, error } = await supabaseClient
+      .from('task_subtasks')
+      .select('*')
+      .eq('task_id', taskId)
+      .order('created_at', { ascending: true });
+
+    setSubtasksLoadingByTaskId((prev) => ({ ...prev, [taskId]: false }));
+
+    if (error) {
+      console.error(error);
+      setError(
+        'No se pudieron cargar las subtareas. Verificar tabla task_subtasks y RLS.',
+      );
+      return;
+    }
+
+    const list = (data ?? []) as Subtask[];
+    setSubtasksByTaskId((prev) => ({ ...prev, [taskId]: list }));
+
+    const done = list.filter((s) => s.completed).length;
+    setSubtaskCountsByTaskId((prev) => ({
+      ...prev,
+      [taskId]: { total: list.length, done },
+    }));
+  };
+
+  const toggleSubtasksPanel = async (taskId: string) => {
+    const wasExpanded = expandedSubtasks.has(taskId);
+
+    setExpandedSubtasks((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+
+    if (!wasExpanded) {
+      await ensureSubtasksLoaded(taskId);
+    }
+  };
+
+  const addSubtask = async (taskId: string) => {
+    if (!user) return;
+
+    const raw = (newSubtaskTitleByTaskId[taskId] ?? '').trim();
+    if (!raw) return;
+
+    setError(null);
+
+    const { data, error } = await supabaseClient
+      .from('task_subtasks')
+      .insert({
+        task_id: taskId,
+        title: raw,
+        completed: false,
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error(error);
+      setError('No se pudo crear la subtarea.');
+      return;
+    }
+
+    const created = data as Subtask;
+
+    setSubtasksByTaskId((prev) => {
+      const current = prev[taskId] ?? [];
+      return { ...prev, [taskId]: [...current, created] };
+    });
+
+    setSubtaskCountsByTaskId((prev) => {
+      const current = prev[taskId] ?? { total: 0, done: 0 };
+      return {
+        ...prev,
+        [taskId]: { total: current.total + 1, done: current.done },
+      };
+    });
+
+    setNewSubtaskTitleByTaskId((prev) => ({ ...prev, [taskId]: '' }));
+  };
+
+  const toggleSubtaskCompleted = async (taskId: string, subtask: Subtask) => {
+    if (!user) return;
+
+    setError(null);
+
+    const { data, error } = await supabaseClient
+      .from('task_subtasks')
+      .update({ completed: !subtask.completed })
+      .eq('id', subtask.id)
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error(error);
+      setError('No se pudo actualizar la subtarea.');
+      return;
+    }
+
+    const updated = data as Subtask;
+
+    setSubtasksByTaskId((prev) => {
+      const current = prev[taskId] ?? [];
+      return {
+        ...prev,
+        [taskId]: current.map((s) => (s.id === updated.id ? updated : s)),
+      };
+    });
+
+    setSubtaskCountsByTaskId((prev) => {
+      const current = prev[taskId] ?? { total: 0, done: 0 };
+      const nextDone = subtask.completed ? current.done - 1 : current.done + 1;
+      return {
+        ...prev,
+        [taskId]: { total: current.total, done: Math.max(0, nextDone) },
+      };
+    });
+  };
+
+  const deleteSubtask = async (taskId: string, subtaskId: string) => {
+    if (!user) return;
+
+    setError(null);
+
+    const existing = (subtasksByTaskId[taskId] ?? []).find(
+      (s) => s.id === subtaskId,
+    );
+    const wasDone = !!existing?.completed;
+
+    const { error } = await supabaseClient
+      .from('task_subtasks')
+      .delete()
+      .eq('id', subtaskId);
+
+    if (error) {
+      console.error(error);
+      setError('No se pudo eliminar la subtarea.');
+      return;
+    }
+
+    setSubtasksByTaskId((prev) => {
+      const current = prev[taskId] ?? [];
+      return { ...prev, [taskId]: current.filter((s) => s.id !== subtaskId) };
+    });
+
+    setSubtaskCountsByTaskId((prev) => {
+      const current = prev[taskId] ?? { total: 0, done: 0 };
+      return {
+        ...prev,
+        [taskId]: {
+          total: Math.max(0, current.total - 1),
+          done: Math.max(0, current.done - (wasDone ? 1 : 0)),
+        },
+      };
+    });
+  };
+
+  // Aplicar filtro + ORDEN por fecha
   const filteredTasks = useMemo(() => {
-    return tasks.filter((t) => {
+    const list = tasks.filter((t) => {
       if (filter === 'pending' && t.completed) return false;
       if (filter === 'completed' && !t.completed) return false;
 
@@ -465,7 +707,21 @@ export default function TasksPage() {
 
       return true;
     });
-  }, [tasks, filter, filterCourseId, filterPriority]);
+
+    // Orden por fecha límite (sin fecha al final)
+    return list.sort((a, b) => {
+      const aDate = a.due_date;
+      const bDate = b.due_date;
+
+      if (!aDate && !bDate) return 0;
+      if (!aDate) return 1;
+      if (!bDate) return -1;
+
+      return dateOrder === 'nearest'
+        ? aDate.localeCompare(bDate)
+        : bDate.localeCompare(aDate);
+    });
+  }, [tasks, filter, filterCourseId, filterPriority, dateOrder]);
 
   if (loading || (!user && !loading)) {
     return (
@@ -489,10 +745,7 @@ export default function TasksPage() {
         <section className="border border-[var(--card-border)] rounded-xl p-4 flex flex-col gap-3 bg-[var(--card-bg)]">
           <h2 className="font-semibold text-sm mb-1">Nueva tarea</h2>
 
-          <form
-            onSubmit={handleAddTask}
-            className="flex flex-col gap-3"
-          >
+          <form onSubmit={handleAddTask} className="flex flex-col gap-3">
             <input
               type="text"
               placeholder="Título de la tarea (obligatorio)"
@@ -543,9 +796,7 @@ export default function TasksPage() {
                 <select
                   className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                   value={newTaskPriority}
-                  onChange={(e) =>
-                    setNewTaskPriority(e.target.value as Priority)
-                  }
+                  onChange={(e) => setNewTaskPriority(e.target.value as Priority)}
                 >
                   <option value="high">Alta</option>
                   <option value="medium">Media</option>
@@ -567,9 +818,7 @@ export default function TasksPage() {
               </label>
             </div>
 
-            {error && (
-              <p className="text-xs text-red-400">{error}</p>
-            )}
+            {error && <p className="text-xs text-red-400">{error}</p>}
 
             <button
               type="submit"
@@ -581,7 +830,7 @@ export default function TasksPage() {
         </section>
 
         {/* Filtros y resumen */}
-        <section className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <section className="flex flex-wrap items-center gap-3 text-sm">
           <div className="inline-flex border border-[var(--card-border)] rounded-full overflow-hidden bg-[var(--card-bg)]">
             <button
               type="button"
@@ -618,7 +867,8 @@ export default function TasksPage() {
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          {/* Controles a la derecha */}
+          <div className="flex flex-wrap items-center gap-3 flex-1 justify-end">
             <label className="flex items-center gap-2">
               <span>Materia:</span>
               <select
@@ -641,16 +891,24 @@ export default function TasksPage() {
               <select
                 className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-[var(--card-bg)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                 value={filterPriority}
-                onChange={(e) =>
-                  setFilterPriority(
-                    e.target.value as PriorityFilter,
-                  )
-                }
+                onChange={(e) => setFilterPriority(e.target.value as PriorityFilter)}
               >
                 <option value="all">Todas</option>
                 <option value="high">Alta</option>
                 <option value="medium">Media</option>
                 <option value="low">Baja</option>
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <span>Orden:</span>
+              <select
+                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-[var(--card-bg)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                value={dateOrder}
+                onChange={(e) => setDateOrder(e.target.value as DateOrder)}
+              >
+                <option value="nearest">Más próxima</option>
+                <option value="farthest">Más lejana</option>
               </select>
             </label>
 
@@ -690,112 +948,236 @@ export default function TasksPage() {
                 status.tone === 'danger'
                   ? 'bg-[var(--danger)]/15 text-[var(--danger)] border border-[var(--danger)]/40'
                   : status.tone === 'warn'
-                  ? 'bg-[var(--warn)]/15 text-[var(--warn)] border border-[var(--warn)]/40'
-                  : status.tone === 'ok'
-                  ? 'bg-[var(--success)]/15 text-[var(--success)] border border-[var(--success)]/40'
-                  : 'bg-gray-400/10 text-gray-300 border border-gray-500/30';
+                    ? 'bg-[var(--warn)]/15 text-[var(--warn)] border border-[var(--warn)]/40'
+                    : status.tone === 'ok'
+                      ? 'bg-[var(--success)]/15 text-[var(--success)] border border-[var(--success)]/40'
+                      : 'bg-gray-400/10 text-gray-300 border border-gray-500/30';
 
               const course = getCourseLabel(task.course_id);
               const priorityLabel = getPriorityLabel(task.priority);
               const priorityClass = getPriorityClass(task.priority);
               const tagsList = parseTags(task.tags);
 
+              const isExpanded = expandedSubtasks.has(task.id);
+              const counts = subtaskCountsByTaskId[task.id] ?? { total: 0, done: 0 };
+              const countsLabel = counts.total > 0 ? `${counts.done}/${counts.total}` : null;
+
+              const subtasks = subtasksByTaskId[task.id] ?? [];
+              const subtasksLoading = !!subtasksLoadingByTaskId[task.id];
+
               return (
                 <li
                   key={task.id}
-                  className="flex justify-between items-start gap-3 border border-[var(--card-border)] rounded-lg px-3 py-2 bg-[var(--card-bg)]"
+                  className="border border-[var(--card-border)] rounded-lg px-3 py-2 bg-[var(--card-bg)]"
                 >
-                  <div className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={task.completed}
-                      onChange={() => toggleCompleted(task)}
-                      className="mt-1"
-                    />
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <p
-                          className={`font-medium text-sm ${
-                            task.completed ? 'line-through opacity-60' : ''
-                          }`}
-                        >
-                          {task.title}
-                        </p>
-
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${statusClass}`}
-                        >
-                          {status.label}
-                        </span>
-
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] ${priorityClass}`}
-                        >
-                          Prioridad: {priorityLabel}
-                        </span>
-
-                        {course && (
-                          <span
-                            className="px-2 py-0.5 rounded-full text-[10px] border border-[var(--card-border)]"
-                            style={{
-                              backgroundColor: course.color
-                                ? `${course.color}33`
-                                : undefined,
-                            }}
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={task.completed}
+                        onChange={() => toggleCompleted(task)}
+                        className="mt-1"
+                      />
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <p
+                            className={`font-medium text-sm ${
+                              task.completed ? 'line-through opacity-60' : ''
+                            }`}
                           >
-                            {course.name}
+                            {task.title}
+                          </p>
+
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${statusClass}`}
+                          >
+                            {status.label}
                           </span>
+
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] ${priorityClass}`}
+                          >
+                            Prioridad: {priorityLabel}
+                          </span>
+
+                          {course && (
+                            <span
+                              className="px-2 py-0.5 rounded-full text-[10px] border border-[var(--card-border)]"
+                              style={{
+                                backgroundColor: course.color
+                                  ? `${course.color}33`
+                                  : undefined,
+                              }}
+                            >
+                              {course.name}
+                            </span>
+                          )}
+
+                          {/* Badge subtareas (visible, pero ahora también hay botón a la derecha) */}
+                          <button
+                            type="button"
+                            onClick={() => toggleSubtasksPanel(task.id)}
+                            className="px-2 py-0.5 rounded-full text-[10px] border border-[var(--card-border)] hover:bg-white/10"
+                            title="Abrir checklist de subtareas"
+                          >
+                            {isExpanded ? 'Ocultar' : 'Subtareas'}
+                            {countsLabel ? ` (${countsLabel})` : ''}
+                          </button>
+                        </div>
+
+                        {task.description && (
+                          <p className="text-xs text-gray-200 mb-1">
+                            {task.description}
+                          </p>
+                        )}
+
+                        {tagsList.length > 0 && (
+                          <p className="text-[11px] text-gray-300 mb-1">
+                            Etiquetas:{' '}
+                            {tagsList.map((tag, idx) => (
+                              <span
+                                key={`${task.id}-tag-${idx}`}
+                                className="inline-block px-2 py-0.5 mr-1 mb-1 rounded-full border border-[var(--card-border)] text-[10px]"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </p>
+                        )}
+
+                        {task.due_date && (
+                          <p className="text-[11px] text-gray-400">
+                            Fecha límite: {task.due_date}
+                          </p>
+                        )}
+
+                        {task.focusMinutes > 0 && (
+                          <p className="text-[11px] text-[var(--success)] mt-1">
+                            Tiempo Pomodoro dedicado: {task.focusMinutes} min
+                          </p>
                         )}
                       </div>
+                    </div>
 
-                      {task.description && (
-                        <p className="text-xs text-gray-200 mb-1">
-                          {task.description}
-                        </p>
-                      )}
+                    <div className="flex flex-col gap-1 items-end">
+                      {/* Botón explícito para subtareas (más evidente) */}
+                      <button
+                        type="button"
+                        onClick={() => toggleSubtasksPanel(task.id)}
+                        className="text-[11px] text-[var(--accent)] hover:underline"
+                      >
+                        {isExpanded ? 'Ocultar subtareas' : 'Subtareas'}
+                      </button>
 
-                      {tagsList.length > 0 && (
-                        <p className="text-[11px] text-gray-300 mb-1">
-                          Etiquetas:{' '}
-                          {tagsList.map((tag, idx) => (
-                            <span
-                              key={`${task.id}-tag-${idx}`}
-                              className="inline-block px-2 py-0.5 mr-1 mb-1 rounded-full border border-[var(--card-border)] text-[10px]"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </p>
-                      )}
-
-                      {task.due_date && (
-                        <p className="text-[11px] text-gray-400">
-                          Fecha límite: {task.due_date}
-                        </p>
-                      )}
-
-                      {task.focusMinutes > 0 && (
-                        <p className="text-[11px] text-[var(--success)] mt-1">
-                          Tiempo Pomodoro dedicado: {task.focusMinutes} min
-                        </p>
-                      )}
+                      <button
+                        onClick={() => openEditTask(task)}
+                        className="text-[11px] text-[var(--accent)] hover:underline"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => askDeleteTask(task)}
+                        className="text-[11px] text-red-400 hover:underline"
+                      >
+                        Eliminar
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-1 items-end">
-                    <button
-                      onClick={() => openEditTask(task)}
-                      className="text-[11px] text-[var(--accent)] hover:underline"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => askDeleteTask(task)}
-                      className="text-[11px] text-red-400 hover:underline"
-                    >
-                      Eliminar
-                    </button>
-                  </div>
+                  {/* Panel subtareas */}
+                  {isExpanded && (
+                    <div className="mt-3 ml-7 border-t border-[var(--card-border)] pt-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs text-gray-400">
+                          Checklist de subtareas
+                          {counts.total > 0
+                            ? ` · Progreso ${counts.done}/${counts.total}`
+                            : ''}
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={() => ensureSubtasksLoaded(task.id)}
+                          className="text-[11px] text-[var(--accent)] hover:underline"
+                        >
+                          Recargar
+                        </button>
+                      </div>
+
+                      {subtasksLoading && (
+                        <p className="text-xs text-gray-400">Cargando subtareas...</p>
+                      )}
+
+                      {!subtasksLoading && subtasks.length === 0 && (
+                        <p className="text-xs text-gray-400">
+                          Aún no hay subtareas. Agregue la primera.
+                        </p>
+                      )}
+
+                      {!subtasksLoading && subtasks.length > 0 && (
+                        <ul className="flex flex-col gap-2">
+                          {subtasks.map((s) => (
+                            <li
+                              key={s.id}
+                              className="flex items-start justify-between gap-2"
+                            >
+                              <label className="flex items-start gap-2 text-sm">
+                                <input
+                                  type="checkbox"
+                                  checked={s.completed}
+                                  onChange={() => toggleSubtaskCompleted(task.id, s)}
+                                  className="mt-1"
+                                />
+                                <span
+                                  className={`text-sm ${
+                                    s.completed ? 'line-through opacity-60' : ''
+                                  }`}
+                                >
+                                  {s.title}
+                                </span>
+                              </label>
+
+                              <button
+                                type="button"
+                                onClick={() => deleteSubtask(task.id, s.id)}
+                                className="text-[11px] text-red-400 hover:underline"
+                              >
+                                Eliminar
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          className="flex-1 border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)] text-sm"
+                          placeholder="Nueva subtarea..."
+                          value={newSubtaskTitleByTaskId[task.id] ?? ''}
+                          onChange={(e) =>
+                            setNewSubtaskTitleByTaskId((prev) => ({
+                              ...prev,
+                              [task.id]: e.target.value,
+                            }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              addSubtask(task.id);
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => addSubtask(task.id)}
+                          className="px-3 py-1 rounded-md border border-[var(--card-border)] hover:bg-white/10 text-sm"
+                        >
+                          Agregar subtarea
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </li>
               );
             })}
@@ -810,10 +1192,7 @@ export default function TasksPage() {
         description={
           <>
             ¿Seguro que desea eliminar la tarea{' '}
-            <span className="font-medium">
-              “{taskToDelete?.title}”
-            </span>
-            ?
+            <span className="font-medium">“{taskToDelete?.title}”</span>?
           </>
         }
         confirmLabel="Eliminar"
@@ -830,8 +1209,8 @@ export default function TasksPage() {
         description={
           <>
             Se eliminarán todas las tareas marcadas como{' '}
-            <span className="font-medium">completadas</span>. Esta
-            acción no se puede deshacer.
+            <span className="font-medium">completadas</span>. Esta acción no se
+            puede deshacer.
           </>
         }
         confirmLabel="Limpiar"
@@ -899,9 +1278,7 @@ export default function TasksPage() {
               <select
                 className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                 value={editPriority}
-                onChange={(e) =>
-                  setEditPriority(e.target.value as Priority)
-                }
+                onChange={(e) => setEditPriority(e.target.value as Priority)}
               >
                 <option value="high">Alta</option>
                 <option value="medium">Media</option>

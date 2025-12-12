@@ -45,9 +45,7 @@ export function ConfirmDialog({
       >
         <h2 className="text-lg font-bold mb-2">{title}</h2>
 
-        {description && (
-          <p className="text-sm text-[var(--text-muted)] mb-4">{description}</p>
-        )}
+        {description && <div className="text-sm text-gray-400">{description}</div>}
 
         {children}
 

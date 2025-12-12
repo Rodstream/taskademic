@@ -7,6 +7,7 @@ import { supabaseClient } from '@/lib/supabaseClient';
 import { useTheme } from '@/context/ThemeContext';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { FaEnvelope } from 'react-icons/fa';
 
 import {
   FaHome,
@@ -38,18 +39,18 @@ const mainLinks = [
 const publicSections = [
   {
     href: '/#acerca-de',
+    label: 'Que permite hacer',
+    icon: <FaListUl />,
+  },
+  {
+    href: '/#que-permite',
     label: 'Acerca de',
     icon: <FaInfoCircle />,
   },
   {
-    href: '/#que-permite',
-    label: 'Qué permite hacer',
-    icon: <FaListUl />,
-  },
-  {
-    href: '/#como-funciona',
-    label: 'Cómo funciona',
-    icon: <FaQuestionCircle />,
+    href: '/#contacto',
+    label: 'Contacto',
+    icon: <FaEnvelope />,
   },
 ];
 
