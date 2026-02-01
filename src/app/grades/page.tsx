@@ -7,6 +7,15 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { supabaseClient } from '@/lib/supabaseClient';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import {
+  FaGraduationCap,
+  FaPlus,
+  FaTrash,
+  FaBook,
+  FaCalendarAlt,
+  FaTrophy,
+  FaChartLine,
+} from 'react-icons/fa';
 
 type Course = {
   id: string;
@@ -37,15 +46,19 @@ const EXAM_TYPES = [
 // Clases para el color de la nota individual
 function gradeBadgeClasses(grade: number): string {
   if (grade >= 8) {
-    // verde
     return 'bg-[var(--success)]/15 text-[var(--success)] border-[var(--success)]/40';
   }
   if (grade >= 6) {
-    // amarillo
     return 'bg-[var(--warn)]/15 text-[var(--warn)] border-[var(--warn)]/40';
   }
-  // rojo
   return 'bg-[var(--danger)]/15 text-[var(--danger)] border-[var(--danger)]/40';
+}
+
+// Color sólido para el número grande
+function gradeColor(grade: number): string {
+  if (grade >= 8) return 'text-[var(--success)]';
+  if (grade >= 6) return 'text-[var(--warn)]';
+  return 'text-[var(--danger)]';
 }
 
 // Texto para la etiqueta de estado
@@ -68,11 +81,17 @@ export default function GradesPage() {
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Modal
+  const [showModal, setShowModal] = useState(false);
+
   // Form
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [gradeValue, setGradeValue] = useState('');
   const [examType, setExamType] = useState('');
   const [examDate, setExamDate] = useState('');
+
+  // Filtro de materia
+  const [filterCourseId, setFilterCourseId] = useState<string>('all');
 
   // Confirmación de eliminación
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -147,11 +166,6 @@ export default function GradesPage() {
 
   const hasCourses = courses.length > 0;
 
-  const selectedCourse = useMemo(
-    () => courses.find((c) => c.id === selectedCourseId) ?? null,
-    [courses, selectedCourseId],
-  );
-
   // Enviar formulario
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,7 +174,7 @@ export default function GradesPage() {
     setError(null);
 
     if (!selectedCourseId) {
-      setError('Seleccione una materia en el panel de la izquierda.');
+      setError('Seleccione una materia.');
       return;
     }
 
@@ -211,10 +225,11 @@ export default function GradesPage() {
       ...prev,
     ]);
 
-    // limpiar campos, mantener materia seleccionada
+    // limpiar campos y cerrar modal
     setGradeValue('');
     setExamType('');
     setExamDate('');
+    setShowModal(false);
   };
 
   // --- Manejo de confirmación de eliminación ---
@@ -259,11 +274,23 @@ export default function GradesPage() {
   const groupedGrades = useMemo(() => {
     const map = new Map<string, GradeWithCourse[]>();
     for (const g of grades) {
+      if (filterCourseId !== 'all' && g.course_id !== filterCourseId) continue;
       const list = map.get(g.course_id) ?? [];
       list.push(g);
       map.set(g.course_id, list);
     }
     return map;
+  }, [grades, filterCourseId]);
+
+  // Estadísticas generales
+  const stats = useMemo(() => {
+    if (grades.length === 0) return null;
+    const total = grades.length;
+    const sum = grades.reduce((acc, g) => acc + g.grade, 0);
+    const avg = sum / total;
+    const approved = grades.filter((g) => g.grade >= 6).length;
+    const highest = Math.max(...grades.map((g) => g.grade));
+    return { total, avg, approved, highest };
   }, [grades]);
 
   if (loading || (!user && !loading)) {
@@ -275,283 +302,367 @@ export default function GradesPage() {
   }
 
   return (
-    <main className="max-w-4xl mx-auto px-4 py-8 flex flex-col gap-6">
-      <header>
-        <h1 className="text-2xl font-bold mb-1">Notas de exámenes</h1>
-        <p className="text-sm text-muted max-w-xl">
-          Registre las notas de los exámenes por materia. Más adelante estos
-          datos se podrán usar en el panel de rendimiento para analizar su
-          desempeño a lo largo de la cursada.
-        </p>
-      </header>
-
-      {error && (
-        <p className="text-sm text-[var(--danger)]">
-          {error}
-        </p>
-      )}
-
-      {/* Dos cuadros: Materias + Formulario */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Panel izquierdo: Materias */}
-        <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] flex flex-col gap-4">
+    <>
+      <main className="max-w-5xl mx-auto px-4 py-8 flex flex-col gap-6">
+        {/* Header */}
+        <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h2 className="text-sm font-semibold text-soft mb-1">Materias</h2>
-            <p className="text-sm text-muted">
-              Seleccione la materia para la que desea registrar una nota de
-              examen.
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <FaGraduationCap className="text-[var(--accent)]" />
+              Notas de exámenes
+            </h1>
+            <p className="text-sm text-muted mt-1">
+              Registra y visualiza tus calificaciones por materia
             </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowModal(true)}
+            disabled={!hasCourses}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--accent)] text-[var(--foreground)] font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <FaPlus className="text-xs" />
+            Nueva nota
+          </button>
+        </header>
 
-            {!hasCourses ? (
-              <p className="text-sm text-muted mt-2">
-                Todavía no hay materias cargadas. Puede crearlas desde{' '}
-                <Link
-                  href="/courses"
-                  className="text-[var(--accent)] underline underline-offset-2"
-                >
-                  la sección Materias
-                </Link>
-                .
+        {error && (
+          <div className="text-sm text-[var(--danger)] bg-[var(--danger)]/10 px-4 py-2 rounded-xl">
+            {error}
+          </div>
+        )}
+
+        {/* Stats cards */}
+        {stats && (
+          <section className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <article className="border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)]">
+              <div className="flex items-center gap-2 mb-2">
+                <FaBook className="text-[var(--accent)] text-sm" />
+                <span className="text-xs text-muted uppercase tracking-wide">Total</span>
+              </div>
+              <p className="text-2xl font-bold">{stats.total}</p>
+              <p className="text-xs text-muted">notas registradas</p>
+            </article>
+
+            <article className="border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)]">
+              <div className="flex items-center gap-2 mb-2">
+                <FaChartLine className="text-[var(--primary-soft)] text-sm" />
+                <span className="text-xs text-muted uppercase tracking-wide">Promedio</span>
+              </div>
+              <p className={`text-2xl font-bold ${gradeColor(stats.avg)}`}>
+                {stats.avg.toFixed(2)}
+              </p>
+              <p className="text-xs text-muted">{gradeStatusLabel(stats.avg)}</p>
+            </article>
+
+            <article className="border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)]">
+              <div className="flex items-center gap-2 mb-2">
+                <FaGraduationCap className="text-[var(--success)] text-sm" />
+                <span className="text-xs text-muted uppercase tracking-wide">Aprobadas</span>
+              </div>
+              <p className="text-2xl font-bold text-[var(--success)]">{stats.approved}</p>
+              <p className="text-xs text-muted">de {stats.total} exámenes</p>
+            </article>
+
+            <article className="border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)]">
+              <div className="flex items-center gap-2 mb-2">
+                <FaTrophy className="text-[var(--warn)] text-sm" />
+                <span className="text-xs text-muted uppercase tracking-wide">Mejor nota</span>
+              </div>
+              <p className={`text-2xl font-bold ${gradeColor(stats.highest)}`}>
+                {stats.highest.toFixed(2)}
+              </p>
+              <p className="text-xs text-muted">{gradeStatusLabel(stats.highest)}</p>
+            </article>
+          </section>
+        )}
+
+        {/* Sin materias */}
+        {!hasCourses && (
+          <div className="text-center py-12 border border-dashed border-[var(--card-border)] rounded-2xl bg-[var(--card-bg)]/50">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[var(--accent)]/10 flex items-center justify-center">
+              <FaBook className="text-2xl text-[var(--accent)]" />
+            </div>
+            <p className="text-soft mb-2">No tienes materias cargadas</p>
+            <p className="text-xs text-muted mb-4">
+              Primero debes crear materias para poder registrar notas
+            </p>
+            <Link
+              href="/courses"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--foreground)] text-sm font-medium"
+            >
+              Ir a Materias
+            </Link>
+          </div>
+        )}
+
+        {/* Filtro y listado */}
+        {hasCourses && (
+          <>
+            {/* Filtro por materia */}
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="font-semibold">Notas registradas</h2>
+              <select
+                value={filterCourseId}
+                onChange={(e) => setFilterCourseId(e.target.value)}
+                className="text-sm border border-[var(--card-border)] rounded-xl px-3 py-2 bg-[var(--card-bg)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+              >
+                <option value="all">Todas las materias</option>
+                {courses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Listado de notas */}
+            {loadingData ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : grades.length === 0 ? (
+              <div className="text-center py-12 border border-dashed border-[var(--card-border)] rounded-2xl bg-[var(--card-bg)]/50">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[var(--accent)]/10 flex items-center justify-center">
+                  <FaGraduationCap className="text-2xl text-[var(--accent)]" />
+                </div>
+                <p className="text-soft mb-2">No hay notas registradas</p>
+                <p className="text-xs text-muted">
+                  Usa el botón &quot;Nueva nota&quot; para cargar tu primera calificación
+                </p>
+              </div>
+            ) : groupedGrades.size === 0 ? (
+              <p className="text-sm text-muted text-center py-8">
+                No hay notas para la materia seleccionada.
               </p>
             ) : (
-              <div className="mt-3 space-y-1 max-h-72 overflow-y-auto pr-1">
-                {courses.map((c) => {
-                  const active = c.id === selectedCourseId;
+              <div className="flex flex-col gap-4">
+                {Array.from(groupedGrades.entries()).map(([courseIdKey, list]) => {
+                  const courseName = list[0]?.courseName ?? 'Materia';
+                  const avg = list.reduce((acc, g) => acc + g.grade, 0) / list.length;
+
                   return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setSelectedCourseId(c.id)}
-                      className={`w-full text-left px-3 py-2 rounded-md border text-sm transition-colors ${
-                        active
-                          ? 'border-[var(--accent)] bg-[var(--accent-soft)]/40 font-semibold'
-                          : 'border-[var(--card-border)] bg-[var(--card-bg)] hover:bg-white/5'
-                      }`}
+                    <article
+                      key={courseIdKey}
+                      className="border border-[var(--card-border)] rounded-2xl bg-[var(--card-bg)] overflow-hidden"
                     >
-                      {c.name}
-                    </button>
+                      {/* Header de materia */}
+                      <div className="flex items-center justify-between p-4 border-b border-[var(--card-border)] bg-[var(--card-bg)]">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/10 flex items-center justify-center">
+                            <FaBook className="text-[var(--accent)]" />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold">{courseName}</h3>
+                            <p className="text-xs text-muted">{list.length} {list.length === 1 ? 'nota' : 'notas'}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-muted">Promedio</p>
+                          <p className={`text-xl font-bold ${gradeColor(avg)}`}>
+                            {avg.toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Lista de notas */}
+                      <div className="divide-y divide-[var(--card-border)]">
+                        {list.map((g) => {
+                          const dateLabel = g.exam_date
+                            ? new Date(g.exam_date + 'T00:00:00').toLocaleDateString('es-AR', {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                              })
+                            : null;
+
+                          return (
+                            <div
+                              key={g.id}
+                              className="flex items-center justify-between p-4 hover:bg-[var(--card-bg)]/50 transition-colors group"
+                            >
+                              <div className="flex items-center gap-4">
+                                <span
+                                  className={`w-14 h-14 rounded-xl flex items-center justify-center text-lg font-bold border ${gradeBadgeClasses(g.grade)}`}
+                                >
+                                  {g.grade.toFixed(1)}
+                                </span>
+                                <div>
+                                  <p className="font-medium">
+                                    {g.exam_type || 'Examen'}
+                                  </p>
+                                  <div className="flex items-center gap-3 text-xs text-muted">
+                                    <span className={gradeColor(g.grade)}>
+                                      {gradeStatusLabel(g.grade)}
+                                    </span>
+                                    {dateLabel && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="flex items-center gap-1">
+                                          <FaCalendarAlt className="text-[10px]" />
+                                          {dateLabel}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleAskDelete(g.id)}
+                                disabled={deleteLoadingId === g.id}
+                                className="p-2 rounded-lg text-muted hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
+                                title="Eliminar"
+                              >
+                                <FaTrash className="text-sm" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </article>
                   );
                 })}
               </div>
             )}
-          </div>
-        </article>
+          </>
+        )}
+      </main>
 
-        {/* Panel derecho: formulario */}
-        <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-          <h2 className="text-sm font-semibold text-soft mb-3">
-            Nota de examen por materia
-          </h2>
+      {/* Modal Nueva Nota */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Overlay */}
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowModal(false)}
+          />
 
-          {!hasCourses ? (
-            <p className="text-sm text-muted">
-              Una vez que tenga materias creadas, podrá registrar aquí las notas
-              de exámenes (parciales, recuperatorios, finales, etc.).
-            </p>
-          ) : (
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-              {/* Materia seleccionada */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-soft">
-                  Materia seleccionada
-                </label>
-                <div className="px-3 py-2 rounded-md border border-[var(--card-border)] bg-[var(--card-bg)] text-sm">
-                  {selectedCourse
-                    ? selectedCourse.name
-                    : 'Seleccione una materia en el panel de la izquierda.'}
+          {/* Modal */}
+          <div className="relative w-full max-w-md bg-[var(--background)] border border-[var(--card-border)] rounded-2xl shadow-xl">
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b border-[var(--card-border)]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[var(--accent)] flex items-center justify-center">
+                  <FaGraduationCap className="text-[var(--foreground)]" />
                 </div>
-                <p className="text-[11px] text-muted">
-                  La nota se guardará asociada a esta materia.
-                </p>
+                <div>
+                  <h2 className="font-semibold">Nueva nota</h2>
+                  <p className="text-xs text-muted">Registra una calificación</p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="p-2 rounded-lg text-muted hover:text-[var(--foreground)] hover:bg-[var(--card-bg)] transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-4">
+              {/* Materia */}
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs text-soft font-medium">Materia</span>
+                <select
+                  value={selectedCourseId}
+                  onChange={(e) => setSelectedCourseId(e.target.value)}
+                  className="border border-[var(--card-border)] rounded-xl px-3 py-2.5 bg-[var(--card-bg)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                  required
+                >
+                  <option value="">Seleccionar materia</option>
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
               {/* Tipo de evaluación */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-soft">Tipo de evaluación</label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs text-soft font-medium">Tipo de evaluación</span>
                 <select
                   value={examType}
                   onChange={(e) => setExamType(e.target.value)}
-                  className="px-2 py-1 rounded-md text-sm"
+                  className="border border-[var(--card-border)] rounded-xl px-3 py-2.5 bg-[var(--card-bg)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                  required
                 >
-                  <option value="">Seleccione una opción</option>
+                  <option value="">Seleccionar tipo</option>
                   {EXAM_TYPES.map((type) => (
                     <option key={type} value={type}>
                       {type}
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-muted">
-                  Ejemplo: Primer parcial, Recuperatorio, Examen final, etc.
-                </p>
-              </div>
+              </label>
 
-              {/* Nota */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-soft">
-                  Nota obtenida (0 a 10)
+              <div className="grid grid-cols-2 gap-3">
+                {/* Nota */}
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs text-soft font-medium">Nota (0-10)</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="10"
+                    value={gradeValue}
+                    onChange={(e) => setGradeValue(e.target.value)}
+                    className="border border-[var(--card-border)] rounded-xl px-3 py-2.5 bg-[var(--card-bg)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                    placeholder="8.50"
+                    required
+                  />
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="10"
-                  value={gradeValue}
-                  onChange={(e) => setGradeValue(e.target.value)}
-                  className="px-2 py-1 rounded-md text-sm"
-                  placeholder="Ej: 8.50"
-                />
-                <p className="text-[11px] text-muted">
-                  Puede usar punto o coma para decimales.
-                </p>
-              </div>
 
-              {/* Fecha del examen */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-soft">
-                  Fecha del examen (opcional)
+                {/* Fecha */}
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs text-soft font-medium">Fecha (opcional)</span>
+                  <input
+                    type="date"
+                    value={examDate}
+                    onChange={(e) => setExamDate(e.target.value)}
+                    className="border border-[var(--card-border)] rounded-xl px-3 py-2.5 bg-[var(--card-bg)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                  />
                 </label>
-                <input
-                  type="date"
-                  value={examDate}
-                  onChange={(e) => setExamDate(e.target.value)}
-                  className="px-2 py-1 rounded-md text-sm"
-                />
-                <p className="text-[11px] text-muted">
-                  Si no la completa, se usará solo la fecha de registro.
-                </p>
               </div>
 
-              <div className="flex justify-end mt-2">
+              {/* Footer */}
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2.5 rounded-xl border border-[var(--card-border)] text-[var(--foreground)] font-medium hover:bg-[var(--card-bg)] transition-colors"
+                >
+                  Cancelar
+                </button>
                 <button
                   type="submit"
-                  disabled={formLoading || !selectedCourse}
-                  className="px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--foreground)] text-sm font-semibold disabled:opacity-60"
+                  disabled={formLoading}
+                  className="px-6 py-2.5 rounded-xl bg-[var(--accent)] text-[var(--foreground)] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
                   {formLoading ? 'Guardando...' : 'Guardar nota'}
                 </button>
               </div>
             </form>
-          )}
-        </article>
-      </section>
-
-      {/* Listado de notas */}
-      <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] mb-6">
-        <h2 className="text-sm font-semibold text-soft mb-3">
-          Notas registradas
-        </h2>
-
-        {loadingData ? (
-          <p className="text-sm text-muted">Cargando notas...</p>
-        ) : grades.length === 0 ? (
-          <p className="text-sm text-muted">
-            Todavía no hay notas registradas. Use el formulario de arriba para
-            cargar la primera.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {Array.from(groupedGrades.entries()).map(([courseIdKey, list]) => {
-              const courseName =
-                list[0]?.courseName ??
-                courses.find((c) => c.id === courseIdKey)?.name ??
-                'Materia';
-
-              const avg =
-                list.reduce((acc, g) => acc + g.grade, 0) / list.length;
-
-              return (
-                <article
-                  key={courseIdKey}
-                  className="border border-[var(--card-border)] rounded-md p-3 bg-[var(--card-bg)]"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold">{courseName}</h3>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-muted">
-                        Promedio
-                      </span>
-                      <span
-                        className={
-                          'px-2 py-1 rounded-full border text-xs font-semibold ' +
-                          gradeBadgeClasses(avg)
-                        }
-                      >
-                        {avg.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <ul className="flex flex-col gap-2 text-sm">
-                    {list.map((g) => {
-                      const dateLabel = g.exam_date
-                        ? new Date(g.exam_date).toLocaleDateString('es-AR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                          })
-                        : 'Sin fecha';
-
-                      return (
-                        <li
-                          key={g.id}
-                          className="flex items-center justify-between border border-[var(--card-border)] rounded-md px-3 py-2 bg-[var(--card-bg)]"
-                        >
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-3">
-                              <span
-                                className={
-                                  'px-2 py-1 rounded-full border text-sm font-semibold ' +
-                                  gradeBadgeClasses(g.grade)
-                                }
-                              >
-                                {g.grade.toFixed(2)}
-                              </span>
-                              <div className="flex flex-col">
-                                {g.exam_type && (
-                                  <span className="text-xs text-soft">
-                                    {g.exam_type}
-                                  </span>
-                                )}
-                                <span className="text-[11px] text-muted">
-                                  {gradeStatusLabel(g.grade)}
-                                </span>
-                              </div>
-                            </div>
-                            <span className="text-[11px] text-muted">
-                              Fecha: {dateLabel}
-                            </span>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => handleAskDelete(g.id)}
-                            disabled={deleteLoadingId === g.id}
-                            className="text-[11px] px-2 py-1 rounded-md border border-[var(--card-border)] hover:bg-white/10 disabled:opacity-60"
-                          >
-                            Eliminar
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </article>
-              );
-            })}
           </div>
-        )}
-      </section>
+        </div>
+      )}
 
       {/* Confirmación de eliminación */}
       <ConfirmDialog
         open={deleteDialogOpen}
         title="Eliminar nota"
-        description="¿Seguro que desea eliminar esta nota de examen?"
+        description="¿Seguro que deseas eliminar esta nota? Esta acción no se puede deshacer."
         confirmLabel="Eliminar"
         cancelLabel="Cancelar"
         loading={deleteLoadingId !== null}
         onCancel={handleCancelDelete}
         onConfirm={handleConfirmDelete}
       />
-    </main>
+    </>
   );
 }

@@ -15,7 +15,20 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
-import { FaClipboardList, FaClock, FaChartBar } from 'react-icons/fa';
+import {
+  FaClock,
+  FaChartBar,
+  FaCalendarAlt,
+  FaRocket,
+  FaCheckCircle,
+  FaExclamationTriangle,
+  FaFire,
+  FaArrowRight,
+  FaBook,
+  FaGraduationCap,
+  FaTasks,
+  FaEnvelope,
+} from 'react-icons/fa';
 
 type Priority = 'low' | 'medium' | 'high';
 type PriorityFilter = 'all' | Priority;
@@ -195,177 +208,309 @@ export default function HomePage() {
   // ================================
   if (!user) {
     return (
-      <main className="min-h-screen px-4 py-12 max-w-5xl mx-auto flex flex-col gap-16">
+      <main className="min-h-screen">
         {/* HERO */}
-        <section
-          id="acerca-de"
-          className="flex flex-col items-center text-center gap-5"
-        >
-          <div className="flex flex-col items-center gap-2">
-            <img
-              src="/taskademic-logo.svg"
-              alt="Logo de Taskademic"
-              className="w-16 h-16 sm:w-20 sm:h-20"
-            />
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[var(--card-border)] text-[11px] uppercase tracking-wide text-muted">
-              <span>Plataforma para estudiantes</span>
+        <section className="relative overflow-hidden px-4 py-16 sm:py-24">
+          {/* Fondo decorativo */}
+          <div className="absolute inset-0 -z-10">
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-gradient-to-br from-[var(--accent)]/20 via-[var(--primary-soft)]/10 to-transparent rounded-full blur-3xl" />
+            <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-gradient-to-tl from-[var(--accent)]/15 to-transparent rounded-full blur-3xl" />
+          </div>
+
+          <div className="max-w-5xl mx-auto flex flex-col items-center text-center gap-6">
+            {/* Logo y badge */}
+            <div className="flex flex-col items-center gap-4">
+              <div className="relative">
+                <div className="absolute inset-0 bg-[var(--accent)]/30 rounded-full blur-xl scale-150" />
+                <img
+                  src="/taskademic-logo.svg"
+                  alt="Logo de Taskademic"
+                  className="relative w-20 h-20 sm:w-24 sm:h-24 drop-shadow-lg"
+                />
+              </div>
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[var(--card-bg)] border border-[var(--card-border)] backdrop-blur-sm">
+                <FaGraduationCap className="text-[var(--accent)] text-xs" />
+                <span className="text-[11px] uppercase tracking-wider text-muted font-medium">
+                  Plataforma para estudiantes
+                </span>
+              </div>
+            </div>
+
+            {/* Título principal */}
+            <div className="space-y-4">
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight">
+                Organiza tu{' '}
+                <span className="text-[var(--accent)]">cursada</span>
+                <br />
+                en un solo lugar
+              </h1>
+              <p className="max-w-2xl mx-auto text-base sm:text-lg text-soft leading-relaxed">
+                Taskademic te ayuda a gestionar tareas, planificar sesiones de estudio
+                y visualizar tu progreso académico con claridad.
+              </p>
+            </div>
+
+            {/* CTAs */}
+            <div className="flex flex-col sm:flex-row gap-3 mt-4">
+              <Link
+                href="/register"
+                className="group inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[var(--accent)] text-[var(--foreground)] font-semibold shadow-lg shadow-[var(--accent)]/25 hover:shadow-xl hover:shadow-[var(--accent)]/30 transition-all duration-300 hover:-translate-y-0.5"
+              >
+                Comenzar gratis
+                <FaArrowRight className="text-sm group-hover:translate-x-1 transition-transform" />
+              </Link>
+              <Link
+                href="/login"
+                className="inline-flex items-center justify-center px-6 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)]/50 backdrop-blur-sm font-medium hover:bg-[var(--card-bg)] transition-all duration-300"
+              >
+                Iniciar sesión
+              </Link>
+            </div>
+
+            {/* Stats rápidos */}
+            <div className="flex flex-wrap justify-center gap-8 mt-8 pt-8 border-t border-[var(--card-border)]">
+              <div className="text-center">
+                <p className="text-2xl sm:text-3xl font-bold text-[var(--accent)]">100%</p>
+                <p className="text-xs text-muted mt-1">Gratis</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl sm:text-3xl font-bold">Pomodoro</p>
+                <p className="text-xs text-muted mt-1">Integrado</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl sm:text-3xl font-bold">Métricas</p>
+                <p className="text-xs text-muted mt-1">En tiempo real</p>
+              </div>
             </div>
           </div>
+        </section>
 
-          <h1 className="text-3xl sm:text-4xl font-bold">Taskademic</h1>
+        {/* CARACTERÍSTICAS */}
+        <section className="px-4 py-16 bg-[var(--card-bg)]/30">
+          <div className="max-w-5xl mx-auto">
+            <header className="text-center mb-12">
+              <span className="inline-block px-3 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] text-xs font-semibold uppercase tracking-wider mb-4">
+                Características
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-3">
+                Todo lo que necesitas para tu cursada
+              </h2>
+              <p className="text-soft max-w-2xl mx-auto">
+                Herramientas simples pero potentes, diseñadas para la vida académica.
+              </p>
+            </header>
 
-          <p className="max-w-2xl text-sm sm:text-base text-soft leading-relaxed">
-            Taskademic es una plataforma pensada para que estudiantes
-            universitarios y terciarios organicen sus tareas, planifiquen
-            el estudio y puedan ver, con claridad, cómo evoluciona su
-            rendimiento académico a lo largo del cuatrimestre.
-          </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Tarjeta 1 */}
+              <article className="group relative border border-[var(--card-border)] rounded-2xl p-6 bg-[var(--card-bg)] hover:border-[var(--accent)]/50 transition-all duration-300">
+                <div className="absolute inset-0 bg-gradient-to-br from-[var(--accent)]/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="relative">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent)]/5 mb-4">
+                    <FaTasks className="text-xl text-[var(--accent)]" />
+                  </div>
+                  <h3 className="font-semibold text-lg mb-2">Gestión de tareas</h3>
+                  <p className="text-sm text-soft leading-relaxed">
+                    Registra trabajos prácticos, parciales y entregas. Asigna prioridad,
+                    fecha límite y materia para mantener todo organizado.
+                  </p>
+                </div>
+              </article>
 
-          <p className="max-w-2xl text-sm sm:text-base text-muted leading-relaxed">
-            Reúne en un solo lugar tareas, materias, sesiones de estudio
-            con Pomodoro, calendario y estadísticas, para evitar el caos
-            de tener la cursada repartida entre mil apps diferentes.
-          </p>
+              {/* Tarjeta 2 */}
+              <article className="group relative border border-[var(--card-border)] rounded-2xl p-6 bg-[var(--card-bg)] hover:border-[var(--accent)]/50 transition-all duration-300">
+                <div className="absolute inset-0 bg-gradient-to-br from-[var(--accent)]/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="relative">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent)]/5 mb-4">
+                    <FaClock className="text-xl text-[var(--accent)]" />
+                  </div>
+                  <h3 className="font-semibold text-lg mb-2">Técnica Pomodoro</h3>
+                  <p className="text-sm text-soft leading-relaxed">
+                    Temporizador integrado para sesiones de estudio enfocadas.
+                    Registra automáticamente tu tiempo de concentración.
+                  </p>
+                </div>
+              </article>
 
-          <div className="flex flex-wrap gap-3 justify-center mt-2">
-            <Link
-              href="/register"
-              className="px-5 py-2.5 rounded-md bg-[var(--accent)] text-[var(--foreground)] text-sm font-semibold shadow-md shadow-black/20"
-            >
-              Crear cuenta
-            </Link>
-            <Link
-              href="/login"
-              className="px-5 py-2.5 rounded-md border border-[var(--card-border)] text-sm hover:bg-white/10"
-            >
-              Iniciar sesión
-            </Link>
+              {/* Tarjeta 3 */}
+              <article className="group relative border border-[var(--card-border)] rounded-2xl p-6 bg-[var(--card-bg)] hover:border-[var(--accent)]/50 transition-all duration-300">
+                <div className="absolute inset-0 bg-gradient-to-br from-[var(--accent)]/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="relative">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent)]/5 mb-4">
+                    <FaChartBar className="text-xl text-[var(--accent)]" />
+                  </div>
+                  <h3 className="font-semibold text-lg mb-2">Métricas de estudio</h3>
+                  <p className="text-sm text-soft leading-relaxed">
+                    Visualiza minutos de enfoque, rachas de estudio y tareas
+                    completadas para medir tu avance real.
+                  </p>
+                </div>
+              </article>
+            </div>
+
+            {/* Características secundarias */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+              <div className="flex items-center gap-3 p-4 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)]/50">
+                <FaCalendarAlt className="text-[var(--primary-soft)]" />
+                <span className="text-sm font-medium">Calendario</span>
+              </div>
+              <div className="flex items-center gap-3 p-4 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)]/50">
+                <FaBook className="text-[var(--primary-soft)]" />
+                <span className="text-sm font-medium">Materias</span>
+              </div>
+              <div className="flex items-center gap-3 p-4 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)]/50">
+                <FaFire className="text-[var(--primary-soft)]" />
+                <span className="text-sm font-medium">Rachas</span>
+              </div>
+              <div className="flex items-center gap-3 p-4 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)]/50">
+                <FaCheckCircle className="text-[var(--primary-soft)]" />
+                <span className="text-sm font-medium">Logros</span>
+              </div>
+            </div>
           </div>
         </section>
 
-        {/* QUÉ PERMITE HACER – TARJETAS */}
-        <section id="que-permite" className="flex flex-col gap-6">
-          <header className="text-center">
-            <h2 className="text-2xl font-semibold mb-1">
-              ¿Qué permite hacer Taskademic?
+        {/* CÓMO FUNCIONA */}
+        <section className="px-4 py-16">
+          <div className="max-w-5xl mx-auto">
+            <header className="text-center mb-12">
+              <span className="inline-block px-3 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] text-xs font-semibold uppercase tracking-wider mb-4">
+                Simple y efectivo
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-3">
+                Empieza en 3 pasos
+              </h2>
+            </header>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[var(--accent)] text-[var(--foreground)] text-xl font-bold mb-4">
+                  1
+                </div>
+                <h3 className="font-semibold mb-2">Crea tu cuenta</h3>
+                <p className="text-sm text-soft">
+                  Registrate gratis y configura tus materias del cuatrimestre.
+                </p>
+              </div>
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[var(--accent)] text-[var(--foreground)] text-xl font-bold mb-4">
+                  2
+                </div>
+                <h3 className="font-semibold mb-2">Agrega tus tareas</h3>
+                <p className="text-sm text-soft">
+                  Carga entregas, parciales y trabajos con sus fechas límite.
+                </p>
+              </div>
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[var(--accent)] text-[var(--foreground)] text-xl font-bold mb-4">
+                  3
+                </div>
+                <h3 className="font-semibold mb-2">Estudia y progresa</h3>
+                <p className="text-sm text-soft">
+                  Usa el Pomodoro, completa tareas y mira tu rendimiento crecer.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ACERCA DE */}
+        <section className="px-4 py-16 bg-[var(--card-bg)]/30">
+          <div className="max-w-3xl mx-auto text-center">
+            <span className="inline-block px-3 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] text-xs font-semibold uppercase tracking-wider mb-4">
+              Acerca de
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-bold mb-6">
+              Una herramienta hecha para estudiantes
             </h2>
-            <p className="text-sm sm:text-base text-soft max-w-2xl mx-auto leading-relaxed">
-              Unifica tareas, planificación y seguimiento del estudio en un
-              solo lugar, con herramientas simples pero pensadas para la
-              vida académica.
+            <p className="text-soft leading-relaxed mb-4">
+              Taskademic nace de la necesidad de centralizar la cursada en un solo lugar,
+              priorizando una experiencia simple y rápida para estudiantes universitarios
+              y terciarios.
             </p>
-          </header>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <article className="border border-[var(--card-border)] rounded-xl p-4 bg-[var(--card-bg)] flex flex-col gap-2">
-              <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--accent-soft)]">
-                <FaClipboardList className="text-[var(--primary)]" />
-              </div>
-              <h3 className="font-semibold text-sm">Organizar tareas</h3>
-              <p className="text-xs sm:text-sm text-soft leading-relaxed">
-                Registre trabajos prácticos, parciales, finales y otras
-                entregas. Asigne fecha límite, prioridad, etiquetas y
-                materia para encontrar todo rápido.
-              </p>
-            </article>
-
-            <article className="border border-[var(--card-border)] rounded-xl p-4 bg-[var(--card-bg)] flex flex-col gap-2">
-              <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--accent-soft)]">
-                <FaClock className="text-[var(--primary)]" />
-              </div>
-              <h3 className="font-semibold text-sm">Planificar el estudio</h3>
-              <p className="text-xs sm:text-sm text-soft leading-relaxed">
-                Use un temporizador Pomodoro integrado y un calendario que
-                muestra las tareas en el tiempo, para decidir qué estudiar
-                hoy, mañana o esta semana.
-              </p>
-            </article>
-
-            <article className="border border-[var(--card-border)] rounded-xl p-4 bg-[var(--card-bg)] flex flex-col gap-2">
-              <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--accent-soft)]">
-                <FaChartBar className="text-[var(--primary)]" />
-              </div>
-              <h3 className="font-semibold text-sm">Medir el rendimiento</h3>
-              <p className="text-xs sm:text-sm text-soft leading-relaxed">
-                Visualice minutos de enfoque, rachas de estudio y tareas
-                completadas para ver, con datos, cómo avanza a lo largo del
-                cuatrimestre.
-              </p>
-            </article>
+            <p className="text-muted leading-relaxed">
+              El objetivo es reducir la fricción diaria, evitando depender de múltiples
+              aplicaciones para organizar entregas, calendarios y sesiones de estudio.
+            </p>
           </div>
         </section>
 
-        {/* ACERCA DE (sin cuadro, sin botones) */}
-        <section
-          id="acerca-de-extra"
-          className="flex flex-col items-center text-center gap-3"
-        >
-          <h2 className="text-2xl font-semibold">Acerca de</h2>
+        {/* CONTACTO */}
+        <section className="px-4 py-16">
+          <div className="max-w-xl mx-auto">
+            <header className="text-center mb-8">
+              <span className="inline-block px-3 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] text-xs font-semibold uppercase tracking-wider mb-4">
+                Contacto
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-3">
+                ¿Tienes alguna consulta?
+              </h2>
+              <p className="text-soft">
+                Envíanos un mensaje y te responderemos a la brevedad.
+              </p>
+            </header>
 
-          <p className="max-w-3xl text-sm sm:text-base text-soft leading-relaxed">
-            Taskademic busca centralizar la cursada en un solo lugar, priorizando
-            una experiencia simple y rápida: registrar tareas, planificar el
-            estudio y medir el avance con datos concretos.
-          </p>
+            <form
+              className="flex flex-col gap-4 p-6 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)]"
+              onSubmit={(e) => {
+                e.preventDefault();
+                alert('Mensaje enviado (placeholder)');
+              }}
+            >
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium">Correo electrónico</span>
+                <div className="relative">
+                  <FaEnvelope className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm" />
+                  <input
+                    type="email"
+                    required
+                    placeholder="correo@ejemplo.com"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[var(--card-border)] text-sm bg-transparent focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                  />
+                </div>
+              </label>
 
-          <p className="max-w-3xl text-sm sm:text-base text-muted leading-relaxed">
-            El objetivo es reducir la fricción diaria del estudiante, evitando
-            depender de múltiples aplicaciones para organizar entregas, calendarios
-            y sesiones de estudio.
-          </p>
-        </section>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium">Mensaje</span>
+                <textarea
+                  required
+                  rows={4}
+                  placeholder="Escriba su consulta..."
+                  className="w-full px-4 py-2.5 rounded-xl border border-[var(--card-border)] text-sm bg-transparent focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50 resize-none"
+                />
+              </label>
 
-        {/* CONTACTO (sin cuadro, con formulario) */}
-        <section
-          id="contacto"
-          className="flex flex-col items-center text-center gap-4"
-        >
-          <h2 className="text-2xl font-semibold">Contacto</h2>
-
-          <p className="max-w-3xl text-sm sm:text-base text-soft leading-relaxed">
-            Para consultas, sugerencias o reportes, se recomienda enviar un mensaje.
-          </p>
-
-          <form
-            className="w-full max-w-xl flex flex-col gap-3 text-left"
-            onSubmit={(e) => {
-              e.preventDefault();
-              alert('Mensaje enviado (placeholder)');
-            }}
-          >
-            <label className="flex flex-col gap-1">
-              <span className="text-sm text-soft">Correo</span>
-              <input
-                type="email"
-                required
-                placeholder="correo@ejemplo.com"
-                className="border border-[var(--card-border)] rounded-md px-3 py-2 text-sm bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-              />
-            </label>
-
-            <label className="flex flex-col gap-1">
-              <span className="text-sm text-soft">Mensaje</span>
-              <textarea
-                required
-                rows={4}
-                placeholder="Escriba su consulta..."
-                className="border border-[var(--card-border)] rounded-md px-3 py-2 text-sm bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-              />
-            </label>
-
-            <div className="flex justify-center pt-1">
               <button
                 type="submit"
-                className="px-5 py-2 rounded-md bg-[var(--accent)] text-[var(--foreground)] text-sm font-semibold"
+                className="w-full py-3 rounded-xl bg-[var(--accent)] text-[var(--foreground)] font-semibold hover:opacity-90 transition-opacity mt-2"
               >
-                Enviar
+                Enviar mensaje
               </button>
-            </div>
 
-            <p className="text-[11px] text-muted text-center mt-1">
-              Más adelante se conectará este formulario a un envío real de correos.
+              <p className="text-[11px] text-muted text-center">
+                Próximamente se habilitará el envío real de correos.
+              </p>
+            </form>
+          </div>
+        </section>
+
+        {/* CTA FINAL */}
+        <section className="px-4 py-16">
+          <div className="max-w-3xl mx-auto text-center p-8 sm:p-12 rounded-3xl bg-gradient-to-br from-[var(--accent)]/20 via-[var(--primary-soft)]/10 to-[var(--card-bg)] border border-[var(--card-border)]">
+            <FaRocket className="text-4xl text-[var(--accent)] mx-auto mb-4" />
+            <h2 className="text-2xl sm:text-3xl font-bold mb-3">
+              Empieza a organizar tu cursada hoy
+            </h2>
+            <p className="text-soft mb-6">
+              Únete gratis y toma el control de tu vida académica.
             </p>
-          </form>
+            <Link
+              href="/register"
+              className="inline-flex items-center gap-2 px-8 py-3 rounded-xl bg-[var(--accent)] text-[var(--foreground)] font-semibold shadow-lg shadow-[var(--accent)]/25 hover:shadow-xl transition-all"
+            >
+              Crear cuenta gratis
+              <FaArrowRight className="text-sm" />
+            </Link>
+          </div>
         </section>
       </main>
     );
@@ -374,176 +519,346 @@ export default function HomePage() {
   // ================================
   // DASHBOARD CON SESIÓN
   // ================================
+  const greeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Buenos días';
+    if (hour < 19) return 'Buenas tardes';
+    return 'Buenas noches';
+  };
+
   return (
-    <main className="max-w-5xl mx-auto px-4 py-8 flex flex-col gap-6">
-      <header className="mb-2">
-        <h1 className="text-2xl font-bold mb-1">Bienvenido a Taskademic</h1>
-        <p className="text-sm text-muted">Un resumen rápido de su semana académica.</p>
+    <main className="max-w-6xl mx-auto px-4 py-8 flex flex-col gap-6">
+      {/* Header con saludo */}
+      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-[var(--card-border)]">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-1">
+            {greeting()} 👋
+          </h1>
+          <p className="text-soft">
+            Aquí tienes un resumen de tu semana académica.
+          </p>
+        </div>
+        <Link
+          href="/tasks?new=true"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--foreground)] font-semibold text-sm hover:opacity-90 transition-opacity"
+        >
+          <FaTasks className="text-xs" />
+          Nueva tarea
+        </Link>
       </header>
 
-      {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
-
-      {/* Tarjetas de métricas rápidas */}
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-          <h2 className="text-xs font-semibold mb-1 text-soft">Tareas pendientes</h2>
-          <p className="text-3xl font-bold">{pendingCount}</p>
-          <p className="text-[11px] text-muted mt-2">Total de tareas aún sin completar.</p>
-        </article>
-
-        <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-          <h2 className="text-xs font-semibold mb-1 text-soft">Tareas vencidas</h2>
-          <p className="text-3xl font-bold">{overdueCount}</p>
-          <p className="text-[11px] text-muted mt-2">Tareas cuya fecha límite ya pasó.</p>
-        </article>
-
-        <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-          <h2 className="text-xs font-semibold mb-1 text-soft">Minutos de enfoque (7 días)</h2>
-          <p className="text-3xl font-bold">{focusLast7}</p>
-          <p className="text-[11px] text-muted mt-2">
-            Tiempo total de estudio registrado con Pomodoro.
-          </p>
-        </article>
-      </section>
-
-      {/* Mini-gráfico */}
-      <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-        <h2 className="text-sm font-semibold mb-3 text-soft">
-          Minutos de enfoque (últimos 7 días)
-        </h2>
-
-        {dashboardLoading ? (
-          <p className="text-sm text-muted">Cargando datos de estudio...</p>
-        ) : dailyFocus.every((p) => p.minutes === 0) ? (
-          <p className="text-sm text-muted">
-            Aún no hay sesiones de Pomodoro registradas en los últimos días.
-          </p>
-        ) : (
-          <div className="w-full h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dailyFocus}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                <XAxis dataKey="label" fontSize={11} />
-                <YAxis fontSize={11} />
-                <Tooltip />
-                <Bar dataKey="minutes" fill={barFill} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </section>
-
-      {/* Accesos rápidos */}
-      <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-        <h2 className="text-sm font-semibold mb-3 text-soft">Accesos rápidos</h2>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-          <Link
-            href="/tasks"
-            className="border border-[var(--card-border)] rounded-md px-3 py-2 hover:bg-white/10 flex flex-col"
-          >
-            <span className="font-semibold mb-1">Gestionar tareas</span>
-            <span className="text-[11px] text-muted">Cree, edite y organice sus pendientes.</span>
-          </Link>
-
-          <Link
-            href="/pomodoro"
-            className="border border-[var(--card-border)] rounded-md px-3 py-2 hover:bg-white/10 flex flex-col"
-          >
-            <span className="font-semibold mb-1">Iniciar Pomodoro</span>
-            <span className="text-[11px] text-muted">Registre sesiones de estudio con enfoque.</span>
-          </Link>
-
-          <Link
-            href="/calendar"
-            className="border border-[var(--card-border)] rounded-md px-3 py-2 hover:bg-white/10 flex flex-col"
-          >
-            <span className="font-semibold mb-1">Ver calendario</span>
-            <span className="text-[11px] text-muted">Visualice sus tareas en el calendario.</span>
-          </Link>
-
-          <Link
-            href="/performance"
-            className="border border-[var(--card-border)] rounded-md px-3 py-2 hover:bg-white/10 flex flex-col"
-          >
-            <span className="font-semibold mb-1">Ver rendimiento</span>
-            <span className="text-[11px] text-muted">Revise estadísticas y logros de estudio.</span>
-          </Link>
+      {error && (
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-[var(--danger)]/10 border border-[var(--danger)]/30 text-[var(--danger)] text-sm">
+          <FaExclamationTriangle />
+          {error}
         </div>
+      )}
+
+      {/* Tarjetas de métricas */}
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Tareas pendientes */}
+        <Link href="/tasks" className="group">
+          <article className="h-full border border-[var(--card-border)] rounded-2xl p-5 bg-[var(--card-bg)] hover:border-[var(--accent)]/50 transition-all duration-200">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted uppercase tracking-wide mb-2">Pendientes</p>
+                <p className="text-4xl font-bold text-[var(--accent)]">{pendingCount}</p>
+                <p className="text-sm text-soft mt-1">tareas por completar</p>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-[var(--accent)]/10 flex items-center justify-center group-hover:bg-[var(--accent)]/20 transition-colors">
+                <FaTasks className="text-lg text-[var(--accent)]" />
+              </div>
+            </div>
+          </article>
+        </Link>
+
+        {/* Tareas vencidas */}
+        <Link href="/tasks" className="group">
+          <article className={`h-full border rounded-2xl p-5 bg-[var(--card-bg)] transition-all duration-200 ${overdueCount > 0 ? 'border-[var(--danger)]/30 hover:border-[var(--danger)]/50' : 'border-[var(--card-border)] hover:border-[var(--success)]/50'}`}>
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-xs font-medium text-muted uppercase tracking-wide">Vencidas</p>
+                  {overdueCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-[var(--danger)]/15 text-[var(--danger)]">
+                      !
+                    </span>
+                  )}
+                </div>
+                <p className={`text-4xl font-bold ${overdueCount > 0 ? 'text-[var(--danger)]' : 'text-[var(--success)]'}`}>
+                  {overdueCount}
+                </p>
+                <p className="text-sm text-soft mt-1">
+                  {overdueCount > 0 ? 'requieren atención' : 'todo al día'}
+                </p>
+              </div>
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${overdueCount > 0 ? 'bg-[var(--danger)]/10 group-hover:bg-[var(--danger)]/20' : 'bg-[var(--success)]/10 group-hover:bg-[var(--success)]/20'}`}>
+                {overdueCount > 0 ? (
+                  <FaExclamationTriangle className="text-lg text-[var(--danger)]" />
+                ) : (
+                  <FaCheckCircle className="text-lg text-[var(--success)]" />
+                )}
+              </div>
+            </div>
+          </article>
+        </Link>
+
+        {/* Minutos de enfoque */}
+        <Link href="/performance" className="group">
+          <article className="h-full border border-[var(--card-border)] rounded-2xl p-5 bg-[var(--card-bg)] hover:border-[var(--primary-soft)]/50 transition-all duration-200">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted uppercase tracking-wide mb-2">Enfoque</p>
+                <div className="flex items-baseline gap-1">
+                  <p className="text-4xl font-bold text-[var(--primary-soft)]">{focusLast7}</p>
+                  <span className="text-sm text-muted">min</span>
+                </div>
+                <p className="text-sm text-soft mt-1">últimos 7 días</p>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-[var(--primary-soft)]/10 flex items-center justify-center group-hover:bg-[var(--primary-soft)]/20 transition-colors">
+                <FaClock className="text-lg text-[var(--primary-soft)]" />
+              </div>
+            </div>
+          </article>
+        </Link>
       </section>
+
+      {/* Gráfico y Accesos rápidos en grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Gráfico - ocupa 2 columnas */}
+        <section className="lg:col-span-2 border border-[var(--card-border)] rounded-2xl p-5 bg-[var(--card-bg)]">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--accent)]/15">
+                <FaChartBar className="text-sm text-[var(--accent)]" />
+              </div>
+              <h2 className="font-semibold">Tiempo de estudio</h2>
+            </div>
+            <span className="text-xs text-muted">Últimos 7 días</span>
+          </div>
+
+          {dashboardLoading ? (
+            <div className="h-52 flex items-center justify-center">
+              <p className="text-sm text-muted">Cargando datos...</p>
+            </div>
+          ) : dailyFocus.every((p) => p.minutes === 0) ? (
+            <div className="h-52 flex flex-col items-center justify-center gap-3 text-center">
+              <div className="w-12 h-12 rounded-full bg-[var(--card-border)] flex items-center justify-center">
+                <FaClock className="text-muted" />
+              </div>
+              <div>
+                <p className="text-sm text-soft mb-1">Sin sesiones registradas</p>
+                <p className="text-xs text-muted">Inicia un Pomodoro para ver tu progreso aquí</p>
+              </div>
+              <Link
+                href="/pomodoro"
+                className="inline-flex items-center gap-2 text-xs text-[var(--accent)] hover:underline mt-2"
+              >
+                Iniciar Pomodoro <FaArrowRight className="text-[10px]" />
+              </Link>
+            </div>
+          ) : (
+            <div className="w-full h-52">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dailyFocus}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.1} vertical={false} />
+                  <XAxis dataKey="label" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis fontSize={11} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'var(--card-bg)',
+                      border: '1px solid var(--card-border)',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                    }}
+                  />
+                  <Bar dataKey="minutes" fill={barFill} radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </section>
+
+        {/* Accesos rápidos - columna lateral */}
+        <section className="border border-[var(--card-border)] rounded-2xl p-5 bg-[var(--card-bg)]">
+          <h2 className="font-semibold mb-4">Accesos rápidos</h2>
+          <div className="flex flex-col gap-3">
+            <Link
+              href="/tasks"
+              className="group flex items-center gap-3 p-3 rounded-xl border border-[var(--card-border)] hover:border-[var(--accent)]/50 hover:bg-[var(--accent)]/5 transition-all"
+            >
+              <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--accent)]/15 group-hover:bg-[var(--accent)]/25 transition-colors">
+                <FaTasks className="text-[var(--accent)] text-sm" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm">Mis tareas</p>
+                <p className="text-[11px] text-muted truncate">Gestionar pendientes</p>
+              </div>
+              <FaArrowRight className="text-xs text-muted group-hover:text-[var(--accent)] transition-colors" />
+            </Link>
+
+            <Link
+              href="/pomodoro"
+              className="group flex items-center gap-3 p-3 rounded-xl border border-[var(--card-border)] hover:border-[var(--accent)]/50 hover:bg-[var(--accent)]/5 transition-all"
+            >
+              <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--danger)]/15 group-hover:bg-[var(--danger)]/25 transition-colors">
+                <FaClock className="text-[var(--danger)] text-sm" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm">Pomodoro</p>
+                <p className="text-[11px] text-muted truncate">Iniciar sesión de estudio</p>
+              </div>
+              <FaArrowRight className="text-xs text-muted group-hover:text-[var(--accent)] transition-colors" />
+            </Link>
+
+            <Link
+              href="/calendar"
+              className="group flex items-center gap-3 p-3 rounded-xl border border-[var(--card-border)] hover:border-[var(--accent)]/50 hover:bg-[var(--accent)]/5 transition-all"
+            >
+              <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--primary-soft)]/15 group-hover:bg-[var(--primary-soft)]/25 transition-colors">
+                <FaCalendarAlt className="text-[var(--primary-soft)] text-sm" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm">Calendario</p>
+                <p className="text-[11px] text-muted truncate">Ver tareas en el tiempo</p>
+              </div>
+              <FaArrowRight className="text-xs text-muted group-hover:text-[var(--accent)] transition-colors" />
+            </Link>
+
+            <Link
+              href="/performance"
+              className="group flex items-center gap-3 p-3 rounded-xl border border-[var(--card-border)] hover:border-[var(--accent)]/50 hover:bg-[var(--accent)]/5 transition-all"
+            >
+              <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--success)]/15 group-hover:bg-[var(--success)]/25 transition-colors">
+                <FaChartBar className="text-[var(--success)] text-sm" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm">Rendimiento</p>
+                <p className="text-[11px] text-muted truncate">Estadísticas y logros</p>
+              </div>
+              <FaArrowRight className="text-xs text-muted group-hover:text-[var(--accent)] transition-colors" />
+            </Link>
+          </div>
+        </section>
+      </div>
 
       {/* Próximas tareas */}
-      <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] mb-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+      <section className="border border-[var(--card-border)] rounded-2xl p-5 bg-[var(--card-bg)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
-            <h2 className="text-sm font-semibold text-soft">Próximas tareas</h2>
-
-            <label className="flex items-center gap-2 text-xs text-muted">
-              <span>Prioridad:</span>
-              <select
-                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-[var(--card-bg)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-                value={upcomingPriorityFilter}
-                onChange={(e) =>
-                  setUpcomingPriorityFilter(e.target.value as PriorityFilter)
-                }
-              >
-                <option value="all">Todas</option>
-                <option value="high">Alta</option>
-                <option value="medium">Media</option>
-                <option value="low">Baja</option>
-              </select>
-            </label>
+            <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--accent)]/15">
+              <FaFire className="text-sm text-[var(--accent)]" />
+            </div>
+            <h2 className="font-semibold">Próximas tareas</h2>
           </div>
 
-          <Link href="/tasks" className="text-xs text-[var(--accent)] hover:underline">
-            Ver todas
-          </Link>
+          <div className="flex items-center gap-3">
+            <select
+              className="text-xs border border-[var(--card-border)] rounded-lg px-3 py-1.5 bg-transparent focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+              value={upcomingPriorityFilter}
+              onChange={(e) =>
+                setUpcomingPriorityFilter(e.target.value as PriorityFilter)
+              }
+            >
+              <option value="all">Todas las prioridades</option>
+              <option value="high">Alta</option>
+              <option value="medium">Media</option>
+              <option value="low">Baja</option>
+            </select>
+            <Link
+              href="/tasks"
+              className="text-xs text-[var(--accent)] hover:underline hidden sm:inline"
+            >
+              Ver todas
+            </Link>
+          </div>
         </div>
 
         {dashboardLoading ? (
-          <p className="text-sm text-muted">Cargando tareas...</p>
+          <div className="py-8 text-center">
+            <p className="text-sm text-muted">Cargando tareas...</p>
+          </div>
         ) : !hasData ? (
-          <p className="text-sm text-muted">
-            No hay datos suficientes todavía. Cree algunas tareas o registre sesiones de Pomodoro.
-          </p>
+          <div className="py-8 flex flex-col items-center justify-center gap-3 text-center">
+            <div className="w-14 h-14 rounded-full bg-[var(--card-border)] flex items-center justify-center">
+              <FaTasks className="text-xl text-muted" />
+            </div>
+            <div>
+              <p className="text-soft mb-1">Aún no tienes tareas</p>
+              <p className="text-xs text-muted">Crea tu primera tarea para empezar a organizarte</p>
+            </div>
+            <Link
+              href="/tasks"
+              className="inline-flex items-center gap-2 px-4 py-2 mt-2 rounded-lg bg-[var(--accent)] text-[var(--foreground)] text-sm font-medium"
+            >
+              Crear tarea
+            </Link>
+          </div>
         ) : upcomingTasks.length === 0 ? (
-          <p className="text-sm text-muted">
-            No hay tareas pendientes para la prioridad seleccionada.
-          </p>
+          <div className="py-6 text-center">
+            <p className="text-sm text-muted">
+              No hay tareas pendientes para la prioridad seleccionada.
+            </p>
+          </div>
         ) : (
-          <ul className="flex flex-col gap-2 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {upcomingTasks.map((t) => {
               const p = t.priority ?? 'medium';
-              const priorityLabel =
-                p === 'high' ? 'Alta' : p === 'low' ? 'Baja' : 'Media';
+              const priorityConfig = {
+                high: {
+                  label: 'Alta',
+                  bg: 'bg-[var(--danger)]/10',
+                  text: 'text-[var(--danger)]',
+                  border: 'border-[var(--danger)]/30',
+                  icon: <FaExclamationTriangle className="text-[10px]" />,
+                },
+                medium: {
+                  label: 'Media',
+                  bg: 'bg-[var(--warn)]/10',
+                  text: 'text-[var(--warn)]',
+                  border: 'border-[var(--warn)]/30',
+                  icon: null,
+                },
+                low: {
+                  label: 'Baja',
+                  bg: 'bg-[var(--success)]/10',
+                  text: 'text-[var(--success)]',
+                  border: 'border-[var(--success)]/30',
+                  icon: null,
+                },
+              };
+              const config = priorityConfig[p];
 
-              const priorityClass =
-                p === 'high'
-                  ? 'bg-[var(--danger)]/15 text-[var(--danger)] border border-[var(--danger)]/40'
-                  : p === 'low'
-                  ? 'bg-[var(--success)]/15 text-[var(--success)] border border-[var(--success)]/40'
-                  : 'bg-[var(--warn)]/15 text-[var(--warn)] border border-[var(--warn)]/40';
+              const isOverdue = t.due_date && t.due_date < new Date().toISOString().slice(0, 10);
 
               return (
-                <li
+                <article
                   key={t.id}
-                  className="flex items-center justify-between border border-[var(--card-border)] rounded-md px-3 py-2 bg-[var(--card-bg)]"
+                  className={`flex flex-col gap-2 p-4 rounded-xl border ${isOverdue ? 'border-[var(--danger)]/40 bg-[var(--danger)]/5' : 'border-[var(--card-border)] bg-[var(--card-bg)]/50'} hover:border-[var(--accent)]/40 transition-colors`}
                 >
-                  <div className="flex flex-col">
-                    <span className="font-medium">{t.title}</span>
-                    {t.due_date && (
-                      <span className="text-[11px] text-muted">
-                        Fecha límite: {t.due_date}
-                      </span>
-                    )}
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-medium text-sm line-clamp-2 flex-1">{t.title}</h3>
+                    <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${config.bg} ${config.text} ${config.border} border`}>
+                      {config.icon}
+                      {config.label}
+                    </span>
                   </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] ${priorityClass}`}>
-                    Prioridad: {priorityLabel}
-                  </span>
-                </li>
+                  {t.due_date && (
+                    <div className={`flex items-center gap-1.5 text-xs ${isOverdue ? 'text-[var(--danger)]' : 'text-muted'}`}>
+                      <FaCalendarAlt className="text-[10px]" />
+                      <span>
+                        {isOverdue ? 'Vencida: ' : ''}
+                        {new Date(t.due_date + 'T00:00:00').toLocaleDateString('es-AR', {
+                          day: 'numeric',
+                          month: 'short',
+                        })}
+                      </span>
+                    </div>
+                  )}
+                </article>
               );
             })}
-          </ul>
+          </div>
         )}
       </section>
     </main>

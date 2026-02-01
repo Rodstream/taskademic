@@ -130,94 +130,133 @@ export default function CoursesPage() {
 
   return (
     <>
-      <main className="max-w-3xl mx-auto px-4 py-8 flex flex-col gap-6">
-        <header>
-          <h1 className="text-2xl font-bold mb-1">Materias</h1>
-          <p className="text-sm text-gray-400">
-            Defina las materias o cursos para organizar sus tareas académicas.
+      <main className="max-w-4xl mx-auto px-4 py-10 flex flex-col gap-8">
+        {/* Header */}
+        <header className="text-center">
+          <h1 className="text-3xl font-bold mb-2 text-[var(--foreground)]">
+            Mis Materias
+          </h1>
+          <p className="text-[var(--text-muted)] max-w-md mx-auto">
+            Organiza tus cursos y asignaturas para gestionar mejor tus tareas académicas
           </p>
         </header>
 
-        <section className="border border-[var(--card-border)] rounded-xl p-4 bg-[var(--card-bg)]">
-          <h2 className="text-sm font-semibold mb-3">
-            Nueva materia
-          </h2>
+        {/* Formulario nueva materia */}
+        <section className="border border-[var(--card-border)] rounded-2xl p-6 bg-[var(--card-bg)] backdrop-blur-sm shadow-sm">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 rounded-xl bg-[var(--accent)] flex items-center justify-center">
+              <svg className="w-5 h-5 text-[var(--foreground)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="font-semibold text-[var(--foreground)]">Agregar materia</h2>
+              <p className="text-xs text-[var(--text-muted)]">Crea una nueva materia para tus tareas</p>
+            </div>
+          </div>
 
-          <form
-            onSubmit={handleAddCourse}
-            className="flex flex-col gap-3 text-sm"
-          >
-            <label className="flex flex-col gap-1">
-              <span>Nombre</span>
+          <form onSubmit={handleAddCourse} className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
               <input
                 type="text"
-                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                className="w-full border border-[var(--card-border)] rounded-xl px-4 py-3 bg-[var(--background)] text-[var(--foreground)] placeholder:text-[var(--text-muted)] transition-all duration-200"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ejemplo: Álgebra I, Programación, Redes"
+                placeholder="Nombre de la materia..."
               />
-            </label>
+            </div>
 
-            <label className="flex items-center gap-2">
-              <span>Color (opcional)</span>
-              <input
-                type="color"
-                className="w-10 h-8 border border-[var(--card-border)] rounded-md bg-transparent p-0"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-              />
-            </label>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--card-border)] bg-[var(--background)] cursor-pointer hover:border-[var(--primary-soft)] transition-colors">
+                <span
+                  className="w-6 h-6 rounded-lg border-2 border-white/20 shadow-inner"
+                  style={{ backgroundColor: color }}
+                />
+                <input
+                  type="color"
+                  className="sr-only"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                />
+                <span className="text-sm text-[var(--text-soft)]">Color</span>
+              </label>
 
-            <button
-              type="submit"
-              className="self-start mt-1 px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--foreground)] font-semibold"
-            >
-              Agregar materia
-            </button>
-
-            {error && (
-              <p className="text-xs text-red-400">{error}</p>
-            )}
+              <button
+                type="submit"
+                className="px-6 py-3 rounded-xl bg-[var(--accent)] text-[var(--foreground)] font-semibold hover:opacity-90 transition-opacity shadow-sm"
+              >
+                Agregar
+              </button>
+            </div>
           </form>
+
+          {error && (
+            <p className="mt-3 text-sm text-[var(--danger)] bg-[var(--danger)]/10 px-4 py-2 rounded-lg">
+              {error}
+            </p>
+          )}
         </section>
 
-        <section className="border border-[var(--card-border)] rounded-xl p-4 bg-[var(--card-bg)] text-sm">
-          <h2 className="font-semibold mb-3">
-            Lista de materias
-          </h2>
+        {/* Lista de materias */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-[var(--foreground)]">
+              Tus materias
+            </h2>
+            <span className="text-xs text-[var(--text-muted)] bg-[var(--card-bg)] px-3 py-1 rounded-full border border-[var(--card-border)]">
+              {courses.length} {courses.length === 1 ? 'materia' : 'materias'}
+            </span>
+          </div>
 
           {loadingCourses ? (
-            <p>Cargando materias...</p>
+            <div className="flex items-center justify-center py-12">
+              <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+            </div>
           ) : courses.length === 0 ? (
-            <p className="text-gray-400">
-              Aún no hay materias definidas. Cree una nueva con el formulario de arriba.
-            </p>
+            <div className="text-center py-12 border border-dashed border-[var(--card-border)] rounded-2xl bg-[var(--card-bg)]/50">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[var(--accent)]/10 flex items-center justify-center">
+                <svg className="w-8 h-8 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+              </div>
+              <p className="text-[var(--text-muted)] mb-1">No tienes materias todavía</p>
+              <p className="text-xs text-[var(--text-muted)]">Agrega tu primera materia usando el formulario de arriba</p>
+            </div>
           ) : (
-            <ul className="flex flex-col gap-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               {courses.map((c) => (
-                <li
+                <div
                   key={c.id}
-                  className="flex items-center justify-between border border-[var(--card-border)] rounded-md px-3 py-2 bg-[var(--card-bg)]"
+                  className="group relative flex items-center gap-4 p-4 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] hover:border-[var(--primary-soft)]/30 transition-all duration-200"
                 >
-                  <div className="flex items-center gap-3">
-                    {c.color && (
-                      <span
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: c.color }}
-                      />
-                    )}
-                    <span className="font-medium">{c.name}</span>
+                  {/* Indicador de color */}
+                  <div
+                    className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-sm"
+                    style={{ backgroundColor: c.color || 'var(--primary-soft)' }}
+                  >
+                    {c.name.charAt(0).toUpperCase()}
                   </div>
 
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-medium text-[var(--foreground)] truncate">
+                      {c.name}
+                    </h3>
+                  </div>
+
+                  {/* Botón eliminar */}
                   <button
                     onClick={() => askDeleteCourse(c)}
-                    className="text-[11px] text-red-400 hover:underline"
+                    className="opacity-0 group-hover:opacity-100 p-2 rounded-lg text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-all duration-200"
+                    title="Eliminar materia"
                   >
-                    Eliminar
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
                   </button>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </section>
       </main>

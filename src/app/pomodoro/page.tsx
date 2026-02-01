@@ -30,7 +30,7 @@ type StoredState = {
   breakInput: string;
   cycleStart: number | null;
   selectedTaskId: string | 'none';
-  lastTickAt: number | null; // epoch ms: para descontar tiempo aunque cambies de página
+  lastTickAt: number | null;
 };
 
 export default function PomodoroPage() {
@@ -58,13 +58,12 @@ export default function PomodoroPage() {
 
   const [error, setError] = useState<string | null>(null);
 
-  // tareas del usuario para vincular con el Pomodoro
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
   const [selectedTaskId, setSelectedTaskId] = useState<string | 'none'>('none');
 
-  // evita pisar localStorage con defaults
   const [hydrated, setHydrated] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
 
   // Proteger ruta
   useEffect(() => {
@@ -73,7 +72,7 @@ export default function PomodoroPage() {
     }
   }, [loading, user, router]);
 
-  // Hidratar desde localStorage (solo una vez cuando hay user)
+  // Hidratar desde localStorage
   useEffect(() => {
     if (!user) return;
 
@@ -122,7 +121,6 @@ export default function PomodoroPage() {
       const savedLastTickAt =
         typeof saved.lastTickAt === 'number' ? saved.lastTickAt : null;
 
-      // Aplicar “catch-up” si estaba corriendo
       let nextRemaining = Math.max(0, savedRemaining);
       if (savedRunning && savedLastTickAt) {
         const elapsedSec = Math.floor((Date.now() - savedLastTickAt) / 1000);
@@ -138,17 +136,15 @@ export default function PomodoroPage() {
       setBreakInput(savedBreakInput);
       setCycleStart(savedCycleStart);
       setSelectedTaskId(savedSelected);
-
-      // si estaba corriendo, resetea lastTickAt a “ahora” para seguir descontando
       setLastTickAt(savedRunning ? Date.now() : null);
     } catch {
-      // si el storage está corrupto, ignorar y seguir con defaults
+      // storage corrupto, usar defaults
     } finally {
       setHydrated(true);
     }
   }, [user]);
 
-  // Persistir a localStorage (solo después de hidratar)
+  // Persistir a localStorage
   useEffect(() => {
     if (!user) return;
     if (!hydrated) return;
@@ -182,7 +178,7 @@ export default function PomodoroPage() {
     lastTickAt,
   ]);
 
-  // Cargar tareas pendientes del usuario
+  // Cargar tareas pendientes
   useEffect(() => {
     if (!user) return;
 
@@ -192,7 +188,6 @@ export default function PomodoroPage() {
       const { data, error } = await supabaseClient
         .from('tasks')
         .select('id, title, completed, due_date')
-        // .eq('user_id', user.id)
         .eq('completed', false)
         .order('due_date', { ascending: true });
 
@@ -202,11 +197,6 @@ export default function PomodoroPage() {
       } else {
         const list = (data ?? []) as Task[];
         setTasks(list);
-
-        // si no hay tarea seleccionada, elegir la primera
-        if (list.length > 0 && selectedTaskId === 'none') {
-          setSelectedTaskId(list[0].id);
-        }
       }
 
       setTasksLoading(false);
@@ -216,13 +206,12 @@ export default function PomodoroPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Tick: descontar segundos + actualizar lastTickAt
+  // Tick del timer
   useEffect(() => {
     if (!isRunning) return;
     if (!user) return;
     if (remainingSeconds <= 0) return;
 
-    // setear lastTickAt si arranca a correr y estaba null
     if (!lastTickAt) setLastTickAt(Date.now());
 
     const interval = setInterval(() => {
@@ -233,7 +222,7 @@ export default function PomodoroPage() {
     return () => clearInterval(interval);
   }, [isRunning, user, remainingSeconds, lastTickAt]);
 
-  // Cuando llega a 0, termina la fase
+  // Fin de fase
   useEffect(() => {
     if (!isRunning) return;
     if (remainingSeconds !== 0) return;
@@ -249,6 +238,13 @@ export default function PomodoroPage() {
     return `${mm}:${ss}`;
   }, [remainingSeconds]);
 
+  // Progreso circular (0 a 1)
+  const progress = useMemo(() => {
+    const totalSeconds = mode === 'focus' ? focusMinutes * 60 : breakMinutes * 60;
+    if (totalSeconds === 0) return 0;
+    return 1 - remainingSeconds / totalSeconds;
+  }, [remainingSeconds, mode, focusMinutes, breakMinutes]);
+
   const handleStartPause = () => {
     if (!user) {
       router.push('/login');
@@ -261,15 +257,11 @@ export default function PomodoroPage() {
       const next = !prev;
 
       if (next) {
-        // arrancó
         setLastTickAt(Date.now());
-
-        // si es foco y no hay inicio marcado, guardar inicio
         if (mode === 'focus' && cycleStart === null) {
           setCycleStart(Date.now());
         }
       } else {
-        // pausó
         setLastTickAt(null);
       }
 
@@ -277,10 +269,6 @@ export default function PomodoroPage() {
     });
   };
 
-  /**
-   * Guarda el progreso de foco aunque el ciclo NO haya terminado.
-   * Se usa para el botón "Reiniciar" (y puede reutilizarse en otros flujos).
-   */
   const flushFocusProgress = async () => {
     if (!user) return;
     if (mode !== 'focus') return;
@@ -289,12 +277,9 @@ export default function PomodoroPage() {
     const workedSeconds = Math.max(0, Math.min(totalFocusSeconds, totalFocusSeconds - remainingSeconds));
     const workedMinutes = Math.floor(workedSeconds / 60);
 
-    // Si no llegó a 1 minuto completo, no se registra nada para evitar ruido.
     if (workedMinutes <= 0) return;
 
     const end = Date.now();
-
-    // Si no hay cycleStart (caso raro), se aproxima el inicio en base a lo trabajado.
     const startedAtMs =
       typeof cycleStart === 'number' ? cycleStart : end - workedMinutes * 60_000;
 
@@ -318,13 +303,11 @@ export default function PomodoroPage() {
   const handleReset = async () => {
     setError(null);
 
-    // ✅ FIX: si está en foco y ya trabajó minutos, se guardan antes de resetear
     try {
       await flushFocusProgress();
     } catch (e) {
       console.error(e);
       setError('Ocurrió un error al guardar el progreso antes de reiniciar.');
-      // si falla el guardado, igualmente se permite reiniciar para no bloquear UX
     }
 
     const initialSeconds =
@@ -350,13 +333,12 @@ export default function PomodoroPage() {
     setCycleStart(null);
     setLastTickAt(null);
     setError(null);
+    setShowConfig(false);
   };
 
-  // Fin de fase (foco o descanso)
   const handlePhaseEnd = async (finishedMode: Mode) => {
     if (!user) return;
 
-    // Si terminó un ciclo de ENFOQUE, se registra sesión (igual que antes)
     if (finishedMode === 'focus' && cycleStart !== null) {
       try {
         const end = Date.now();
@@ -388,7 +370,6 @@ export default function PomodoroPage() {
       }
     }
 
-    // Cambiar de modo
     const nextMode: Mode = finishedMode === 'focus' ? 'break' : 'focus';
     const nextSeconds =
       nextMode === 'focus' ? focusMinutes * 60 : breakMinutes * 60;
@@ -397,10 +378,7 @@ export default function PomodoroPage() {
     setRemainingSeconds(nextSeconds);
 
     if (isRunning) {
-      // si sigue corriendo, reiniciar tickAt
       setLastTickAt(Date.now());
-
-      // si vuelve a foco, marcar nuevo inicio
       if (nextMode === 'focus') setCycleStart(Date.now());
       else setCycleStart(null);
     } else {
@@ -414,138 +392,312 @@ export default function PomodoroPage() {
       ? null
       : tasks.find((t) => t.id === selectedTaskId) ?? null;
 
+  // Loading states
   if (loading || (!user && !loading)) {
     return (
-      <main className="flex items-center justify-center min-h-screen">
-        <p>Cargando...</p>
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
       </main>
     );
   }
 
-  // opcional: evitar “parpadeo” mientras hidrata
   if (!hydrated) {
     return (
-      <main className="flex items-center justify-center min-h-screen">
-        <p>Cargando Pomodoro...</p>
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
       </main>
     );
   }
 
-  return (
-    <main className="max-w-2xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-4">Modo Pomodoro</h1>
+  // Parámetros del círculo SVG
+  const circleRadius = 120;
+  const circleCircumference = 2 * Math.PI * circleRadius;
+  const strokeDashoffset = circleCircumference * (1 - progress);
 
-      <section className="border border-[var(--card-border)] rounded-lg p-4 mb-6 flex flex-col gap-4 bg-[var(--card-bg)]">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-400">Modo actual</p>
-            <p className="text-lg font-semibold">
-              {mode === 'focus' ? 'Enfoque' : 'Descanso'}
-            </p>
-          </div>
-          <div className="text-4xl font-mono">{formattedTime}</div>
+  return (
+    <main className="max-w-4xl mx-auto px-4 py-10 flex flex-col gap-8">
+      {/* Header */}
+      <header className="text-center">
+        <h1 className="text-3xl font-bold mb-2 text-[var(--foreground)]">
+          Pomodoro
+        </h1>
+        <p className="text-[var(--text-muted)] max-w-md mx-auto">
+          Mantén el enfoque con sesiones de trabajo y descanso cronometradas
+        </p>
+      </header>
+
+      {/* Timer principal */}
+      <section className="flex flex-col items-center gap-6">
+        {/* Indicador de modo */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              if (!isRunning) {
+                setMode('focus');
+                setRemainingSeconds(focusMinutes * 60);
+                setCycleStart(null);
+              }
+            }}
+            disabled={isRunning}
+            className={`
+              px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200
+              ${mode === 'focus'
+                ? 'bg-[var(--accent)] text-[var(--foreground)]'
+                : 'bg-[var(--card-bg)] border border-[var(--card-border)] text-[var(--text-muted)] hover:border-[var(--primary-soft)]'
+              }
+              ${isRunning ? 'opacity-50 cursor-not-allowed' : ''}
+            `}
+          >
+            Enfoque
+          </button>
+          <button
+            onClick={() => {
+              if (!isRunning) {
+                setMode('break');
+                setRemainingSeconds(breakMinutes * 60);
+                setCycleStart(null);
+              }
+            }}
+            disabled={isRunning}
+            className={`
+              px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200
+              ${mode === 'break'
+                ? 'bg-[var(--success)] text-white'
+                : 'bg-[var(--card-bg)] border border-[var(--card-border)] text-[var(--text-muted)] hover:border-[var(--primary-soft)]'
+              }
+              ${isRunning ? 'opacity-50 cursor-not-allowed' : ''}
+            `}
+          >
+            Descanso
+          </button>
         </div>
 
+        {/* Círculo del timer */}
+        <div className="relative">
+          <svg
+            width="280"
+            height="280"
+            className="transform -rotate-90"
+          >
+            {/* Círculo de fondo */}
+            <circle
+              cx="140"
+              cy="140"
+              r={circleRadius}
+              fill="none"
+              stroke="var(--card-border)"
+              strokeWidth="8"
+            />
+            {/* Círculo de progreso */}
+            <circle
+              cx="140"
+              cy="140"
+              r={circleRadius}
+              fill="none"
+              stroke={mode === 'focus' ? 'var(--accent)' : 'var(--success)'}
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={circleCircumference}
+              strokeDashoffset={strokeDashoffset}
+              className="transition-all duration-300"
+            />
+          </svg>
+
+          {/* Tiempo en el centro */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-5xl font-bold font-mono text-[var(--foreground)]">
+              {formattedTime}
+            </span>
+            <span className={`text-sm font-medium mt-1 ${mode === 'focus' ? 'text-[var(--accent)]' : 'text-[var(--success)]'}`}>
+              {mode === 'focus' ? 'Enfoque' : 'Descanso'}
+            </span>
+          </div>
+        </div>
+
+        {/* Botones de control */}
         <div className="flex gap-3">
           <button
             onClick={handleStartPause}
-            className="px-4 py-2 border border-[var(--card-border)] rounded-md bg-[var(--primary)] text-white"
+            className={`
+              flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-sm
+              ${isRunning
+                ? 'bg-[var(--warn)] text-[var(--foreground)]'
+                : 'bg-[var(--accent)] text-[var(--foreground)]'
+              }
+              hover:opacity-90
+            `}
           >
-            {isRunning ? 'Pausar' : 'Iniciar'}
+            {isRunning ? (
+              <>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Pausar
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Iniciar
+              </>
+            )}
           </button>
 
           <button
             onClick={handleReset}
-            className="px-4 py-2 border border-[var(--card-border)] rounded-md hover:bg-white/10"
+            className="flex items-center gap-2 px-4 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-muted)] hover:text-[var(--foreground)] hover:border-[var(--primary-soft)] transition-all duration-200"
           >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
             Reiniciar
+          </button>
+
+          <button
+            onClick={() => setShowConfig(!showConfig)}
+            className={`
+              flex items-center gap-2 px-4 py-3 rounded-xl border transition-all duration-200
+              ${showConfig
+                ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                : 'border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-muted)] hover:text-[var(--foreground)] hover:border-[var(--primary-soft)]'
+              }
+            `}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
           </button>
         </div>
 
-        {activeTask ? (
-          <div className="mt-1 text-sm">
-            <p className="text-gray-400">Tarea actual</p>
-            <p className="font-medium">{activeTask.title}</p>
-            {activeTask.due_date && (
-              <p className="text-xs text-gray-500">
-                Fecha límite: {activeTask.due_date}
-              </p>
-            )}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-500">
-            Las sesiones se registrarán sin tarea asociada.
+        {error && (
+          <p className="text-sm text-[var(--danger)] bg-[var(--danger)]/10 px-4 py-2 rounded-lg">
+            {error}
           </p>
         )}
-
-        {error && <p className="text-sm text-red-400">{error}</p>}
       </section>
 
-      <section className="border border-[var(--card-border)] rounded-lg p-4 flex flex-col gap-4 text-sm bg-[var(--card-bg)]">
-        <h2 className="font-semibold">Configuración</h2>
+      {/* Configuración colapsable */}
+      {showConfig && (
+        <section className="border border-[var(--card-border)] rounded-2xl p-6 bg-[var(--card-bg)] backdrop-blur-sm">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 rounded-xl bg-[var(--primary-soft)]/15 flex items-center justify-center">
+              <svg className="w-5 h-5 text-[var(--primary-soft)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="font-semibold text-[var(--foreground)]">Configuración de tiempos</h2>
+              <p className="text-xs text-[var(--text-muted)]">Personaliza la duración de tus sesiones</p>
+            </div>
+          </div>
 
-        <div className="flex flex-col sm:flex-row gap-3">
-          <label className="flex flex-col gap-1 flex-1">
-            <span>Minutos de enfoque</span>
-            <input
-              type="number"
-              min={1}
-              className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-              value={focusInput}
-              onChange={(e) => setFocusInput(e.target.value)}
-            />
-          </label>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm text-[var(--text-muted)] mb-2">
+                Minutos de enfoque
+              </label>
+              <input
+                type="number"
+                min={1}
+                className="w-full border border-[var(--card-border)] rounded-xl px-4 py-3 bg-[var(--background)] text-[var(--foreground)] transition-all duration-200"
+                value={focusInput}
+                onChange={(e) => setFocusInput(e.target.value)}
+              />
+            </div>
 
-          <label className="flex flex-col gap-1 flex-1">
-            <span>Minutos de descanso</span>
-            <input
-              type="number"
-              min={1}
-              className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-              value={breakInput}
-              onChange={(e) => setBreakInput(e.target.value)}
-            />
-          </label>
+            <div>
+              <label className="block text-sm text-[var(--text-muted)] mb-2">
+                Minutos de descanso
+              </label>
+              <input
+                type="number"
+                min={1}
+                className="w-full border border-[var(--card-border)] rounded-xl px-4 py-3 bg-[var(--background)] text-[var(--foreground)] transition-all duration-200"
+                value={breakInput}
+                onChange={(e) => setBreakInput(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <button
+            onClick={handleApplyDurations}
+            className="w-full px-4 py-3 rounded-xl bg-[var(--accent)] text-[var(--foreground)] font-semibold hover:opacity-90 transition-opacity"
+          >
+            Aplicar tiempos
+          </button>
+        </section>
+      )}
+
+      {/* Tarea vinculada */}
+      <section className="border border-[var(--card-border)] rounded-2xl p-6 bg-[var(--card-bg)] backdrop-blur-sm">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/15 flex items-center justify-center">
+            <svg className="w-5 h-5 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="font-semibold text-[var(--foreground)]">Vincular con tarea</h2>
+            <p className="text-xs text-[var(--text-muted)]">Las sesiones se registrarán asociadas a esta tarea</p>
+          </div>
         </div>
 
-        <button
-          onClick={handleApplyDurations}
-          className="self-start mt-1 px-4 py-2 border border-[var(--card-border)] rounded-md hover:bg-white/10"
-        >
-          Aplicar tiempos
-        </button>
+        {tasksLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : tasks.length === 0 ? (
+          <div className="text-center py-6 border border-dashed border-[var(--card-border)] rounded-xl bg-[var(--background)]/50">
+            <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-[var(--accent)]/10 flex items-center justify-center">
+              <svg className="w-6 h-6 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            </div>
+            <p className="text-[var(--text-muted)] mb-1">No hay tareas pendientes</p>
+            <p className="text-xs text-[var(--text-muted)]">Crea una tarea desde la sección Tareas</p>
+          </div>
+        ) : (
+          <>
+            <select
+              className="w-full border border-[var(--card-border)] rounded-xl px-4 py-3 bg-[var(--background)] text-[var(--foreground)] transition-all duration-200 mb-4"
+              value={selectedTaskId}
+              onChange={(e) => setSelectedTaskId(e.target.value)}
+            >
+              <option value="none">Sin tarea asociada</option>
+              {tasks.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                  {t.due_date ? ` (vence: ${t.due_date})` : ''}
+                </option>
+              ))}
+            </select>
 
-        <div className="border-t border-[var(--card-border)] pt-3 mt-2">
-          <h3 className="font-semibold mb-2 text-sm">Vincular con una tarea</h3>
-
-          {tasksLoading ? (
-            <p>Cargando tareas...</p>
-          ) : tasks.length === 0 ? (
-            <p className="text-xs text-gray-500">
-              No hay tareas pendientes. Cree una desde la sección “Tareas”.
-            </p>
-          ) : (
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-gray-400">
-                Las sesiones de enfoque se guardarán asociadas a esta tarea.
-              </span>
-              <select
-                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-                value={selectedTaskId}
-                onChange={(e) => setSelectedTaskId(e.target.value)}
-              >
-                <option value="none">Sin tarea asociada</option>
-                {tasks.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.title}
-                    {t.due_date ? ` (vence: ${t.due_date})` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        </div>
+            {activeTask && (
+              <div className="flex items-center gap-3 p-4 rounded-xl bg-[var(--background)] border border-[var(--card-border)]">
+                <div className="w-10 h-10 rounded-xl bg-[var(--accent)] flex items-center justify-center">
+                  <svg className="w-5 h-5 text-[var(--foreground)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-[var(--foreground)] truncate">
+                    {activeTask.title}
+                  </p>
+                  {activeTask.due_date && (
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Fecha límite: {new Date(activeTask.due_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </section>
+
     </main>
   );
 }

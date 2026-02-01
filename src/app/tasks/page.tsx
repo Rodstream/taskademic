@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabaseClient } from '@/lib/supabaseClient';
 import { useAuth } from '@/context/AuthContext';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -48,6 +48,7 @@ type Subtask = {
 export default function TasksPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [tasks, setTasks] = useState<TaskWithStats[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
@@ -70,12 +71,16 @@ export default function TasksPage() {
   const [filterCourseId, setFilterCourseId] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<PriorityFilter>('all');
   const [dateOrder, setDateOrder] = useState<DateOrder>('nearest');
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Modal nueva tarea
+  const [showNewTaskModal, setShowNewTaskModal] = useState(false);
 
   // estados para confirmaciones
   const [taskToDelete, setTaskToDelete] = useState<TaskWithStats | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const [showClearCompleted, setShowClearCompleted] = useState(false);
+  const [clearConfirmStep, setClearConfirmStep] = useState<0 | 1 | 2>(0); // 0 = cerrado, 1 = primer paso, 2 = segundo paso
   const [clearing, setClearing] = useState(false);
 
   // estados para edición
@@ -113,6 +118,15 @@ export default function TasksPage() {
       router.push('/login');
     }
   }, [loading, user, router]);
+
+  // Abrir modal si viene con ?new=true
+  useEffect(() => {
+    if (searchParams.get('new') === 'true') {
+      setShowNewTaskModal(true);
+      // Limpiar el parámetro de la URL sin recargar
+      router.replace('/tasks', { scroll: false });
+    }
+  }, [searchParams, router]);
 
   // Cargar materias
   useEffect(() => {
@@ -257,6 +271,7 @@ export default function TasksPage() {
     setNewTaskCourseId('none');
     setNewTaskPriority('medium');
     setNewTaskTags('');
+    setShowNewTaskModal(false);
   };
 
   const toggleCompleted = async (task: TaskWithStats) => {
@@ -412,17 +427,25 @@ export default function TasksPage() {
     setTaskToDelete(null);
   };
 
-  // ---- Limpiar completadas ----
+  // ---- Limpiar completadas (doble confirmación) ----
   const hasCompleted = useMemo(() => tasks.some((t) => t.completed), [tasks]);
+  const completedCount = useMemo(() => tasks.filter((t) => t.completed).length, [tasks]);
 
   const askClearCompleted = () => {
     if (!hasCompleted) return;
-    setShowClearCompleted(true);
+    setClearConfirmStep(1);
   };
 
   const confirmClearCompleted = async () => {
+    // Si estamos en el paso 1, pasar al paso 2
+    if (clearConfirmStep === 1) {
+      setClearConfirmStep(2);
+      return;
+    }
+
+    // Si estamos en el paso 2, ejecutar la eliminación
     if (!hasCompleted || !user) {
-      setShowClearCompleted(false);
+      setClearConfirmStep(0);
       return;
     }
 
@@ -466,11 +489,11 @@ export default function TasksPage() {
     });
 
     setTasks((prev) => prev.filter((t) => !t.completed));
-    setShowClearCompleted(false);
+    setClearConfirmStep(0);
   };
 
   const cancelClearCompleted = () => {
-    setShowClearCompleted(false);
+    setClearConfirmStep(0);
   };
 
   // Helpers de estado (hoy / vencida / próxima)
@@ -733,225 +756,211 @@ export default function TasksPage() {
 
   return (
     <>
-      <main className="max-w-4xl mx-auto px-4 py-8 flex flex-col gap-6">
-        <header>
-          <h1 className="text-2xl font-bold mb-1">Mis tareas</h1>
-          <p className="text-sm text-gray-400">
-            Organice trabajos, exámenes y pendientes de estudio.
-          </p>
+      <main className="max-w-4xl mx-auto px-4 py-10 flex flex-col gap-6">
+        {/* Header */}
+        <header className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">
+              Mis Tareas
+            </h1>
+            <p className="text-sm text-[var(--text-muted)]">
+              Organiza trabajos, exámenes y pendientes
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowNewTaskModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--accent)] text-[var(--foreground)] font-semibold text-sm hover:opacity-90 transition-opacity shadow-sm"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            Nueva tarea
+          </button>
         </header>
 
-        {/* Formulario nueva tarea */}
-        <section className="border border-[var(--card-border)] rounded-xl p-4 flex flex-col gap-3 bg-[var(--card-bg)]">
-          <h2 className="font-semibold text-sm mb-1">Nueva tarea</h2>
-
-          <form onSubmit={handleAddTask} className="flex flex-col gap-3">
-            <input
-              type="text"
-              placeholder="Título de la tarea (obligatorio)"
-              className="border border-[var(--card-border)] rounded-md px-3 py-2 text-sm bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-            />
-
-            <textarea
-              placeholder="Descripción (opcional)"
-              className="border border-[var(--card-border)] rounded-md px-3 py-2 text-sm bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-            />
-
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <label className="flex items-center gap-2">
-                <span>Fecha límite:</span>
-                <input
-                  type="date"
-                  className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                />
-              </label>
-
-              <label className="flex items-center gap-2">
-                <span>Materia:</span>
-                <select
-                  className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-                  value={newTaskCourseId}
-                  onChange={(e) => setNewTaskCourseId(e.target.value)}
-                  disabled={loadingCourses}
-                >
-                  <option value="none">Sin materia</option>
-                  {courses.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="flex items-center gap-2">
-                <span>Prioridad:</span>
-                <select
-                  className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-                  value={newTaskPriority}
-                  onChange={(e) => setNewTaskPriority(e.target.value as Priority)}
-                >
-                  <option value="high">Alta</option>
-                  <option value="medium">Media</option>
-                  <option value="low">Baja</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="flex flex-col gap-1 text-sm">
-              <label className="flex flex-col gap-1">
-                <span>Etiquetas (separadas por coma)</span>
-                <input
-                  type="text"
-                  className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-                  value={newTaskTags}
-                  onChange={(e) => setNewTaskTags(e.target.value)}
-                  placeholder="Ejemplo: parcial, tp, final"
-                />
-              </label>
-            </div>
-
-            {error && <p className="text-xs text-red-400">{error}</p>}
-
-            <button
-              type="submit"
-              className="self-start px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--foreground)] text-sm font-semibold"
-            >
-              Agregar
-            </button>
-          </form>
-        </section>
+        {error && (
+          <p className="text-sm text-[var(--danger)] bg-[var(--danger)]/10 px-4 py-2 rounded-lg">
+            {error}
+          </p>
+        )}
 
         {/* Filtros y resumen */}
-        <section className="flex flex-wrap items-center gap-3 text-sm">
-          <div className="inline-flex border border-[var(--card-border)] rounded-full overflow-hidden bg-[var(--card-bg)]">
-            <button
-              type="button"
-              onClick={() => setFilter('all')}
-              className={`px-3 py-1 ${
-                filter === 'all'
-                  ? 'bg-[var(--accent)] text-[var(--foreground)] font-semibold'
-                  : 'opacity-80'
-              }`}
-            >
-              Todas
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilter('pending')}
-              className={`px-3 py-1 border-l border-[var(--card-border)] ${
-                filter === 'pending'
-                  ? 'bg-[var(--accent)] text-[var(--foreground)] font-semibold'
-                  : 'opacity-80'
-              }`}
-            >
-              Pendientes
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilter('completed')}
-              className={`px-3 py-1 border-l border-[var(--card-border)] ${
-                filter === 'completed'
-                  ? 'bg-[var(--accent)] text-[var(--foreground)] font-semibold'
-                  : 'opacity-80'
-              }`}
-            >
-              Completadas
-            </button>
+        <section className="flex flex-col gap-3">
+          {/* Barra principal */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            {/* Tabs de estado */}
+            <div className="inline-flex border border-[var(--card-border)] rounded-xl overflow-hidden bg-[var(--card-bg)]">
+              <button
+                type="button"
+                onClick={() => setFilter('all')}
+                className={`px-4 py-2 text-sm font-medium transition-all duration-200 ${
+                  filter === 'all'
+                    ? 'bg-[var(--accent)] text-[var(--foreground)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                Todas
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter('pending')}
+                className={`px-4 py-2 text-sm font-medium transition-all duration-200 ${
+                  filter === 'pending'
+                    ? 'bg-[var(--accent)] text-[var(--foreground)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                Pendientes
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter('completed')}
+                className={`px-4 py-2 text-sm font-medium transition-all duration-200 ${
+                  filter === 'completed'
+                    ? 'bg-[var(--accent)] text-[var(--foreground)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                Completadas
+              </button>
+            </div>
+
+            {/* Acciones derecha */}
+            <div className="flex items-center gap-2">
+              {/* Stats compactos */}
+              <span className="text-xs text-[var(--text-muted)]">
+                <span className="text-[var(--warn)]">{tasks.filter((t) => !t.completed).length}</span>
+                {' / '}
+                <span className="text-[var(--success)]">{tasks.filter((t) => t.completed).length}</span>
+              </span>
+
+              {/* Botón filtros */}
+              <button
+                type="button"
+                onClick={() => setShowFilters(!showFilters)}
+                className={`p-2 rounded-xl border transition-all duration-200 ${
+                  showFilters
+                    ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                    : 'border-[var(--card-border)] text-[var(--text-muted)] hover:text-[var(--foreground)] hover:border-[var(--primary-soft)]'
+                }`}
+                title="Filtros avanzados"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+              </button>
+
+              {/* Botón limpiar */}
+              <button
+                type="button"
+                onClick={askClearCompleted}
+                disabled={!hasCompleted}
+                className="p-2 rounded-xl border border-[var(--card-border)] text-[var(--text-muted)] hover:text-[var(--danger)] hover:border-[var(--danger)] hover:bg-[var(--danger)]/10 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Limpiar completadas"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </div>
           </div>
 
-          {/* Controles a la derecha */}
-          <div className="flex flex-wrap items-center gap-3 flex-1 justify-end">
-            <label className="flex items-center gap-2">
-              <span>Materia:</span>
+          {/* Panel de filtros desplegable */}
+          {showFilters && (
+            <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)]">
               <select
-                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-[var(--card-bg)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                className="border border-[var(--card-border)] rounded-lg px-3 py-1.5 bg-[var(--background)] text-sm text-[var(--foreground)]"
                 value={filterCourseId}
                 onChange={(e) => setFilterCourseId(e.target.value)}
                 disabled={loadingCourses}
               >
-                <option value="all">Todas</option>
+                <option value="all">Todas las materias</option>
                 {courses.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
               </select>
-            </label>
 
-            <label className="flex items-center gap-2">
-              <span>Prioridad:</span>
               <select
-                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-[var(--card-bg)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                className="border border-[var(--card-border)] rounded-lg px-3 py-1.5 bg-[var(--background)] text-sm text-[var(--foreground)]"
                 value={filterPriority}
                 onChange={(e) => setFilterPriority(e.target.value as PriorityFilter)}
               >
-                <option value="all">Todas</option>
+                <option value="all">Todas las prioridades</option>
                 <option value="high">Alta</option>
                 <option value="medium">Media</option>
                 <option value="low">Baja</option>
               </select>
-            </label>
 
-            <label className="flex items-center gap-2">
-              <span>Orden:</span>
               <select
-                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-[var(--card-bg)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                className="border border-[var(--card-border)] rounded-lg px-3 py-1.5 bg-[var(--background)] text-sm text-[var(--foreground)]"
                 value={dateOrder}
                 onChange={(e) => setDateOrder(e.target.value as DateOrder)}
               >
-                <option value="nearest">Más próxima</option>
-                <option value="farthest">Más lejana</option>
+                <option value="nearest">Más próxima primero</option>
+                <option value="farthest">Más lejana primero</option>
               </select>
-            </label>
 
-            <p className="text-gray-400">
-              {tasks.filter((t) => !t.completed).length} pendientes ·{' '}
-              {tasks.filter((t) => t.completed).length} completadas
-            </p>
-
-            <button
-              type="button"
-              onClick={askClearCompleted}
-              disabled={!hasCompleted}
-              className="text-xs px-3 py-1 rounded-full border border-[var(--card-border)] hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Limpiar completadas
-            </button>
-          </div>
+              {/* Indicador de filtros activos */}
+              {(filterCourseId !== 'all' || filterPriority !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterCourseId('all');
+                    setFilterPriority('all');
+                  }}
+                  className="text-xs text-[var(--accent)] hover:underline"
+                >
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
+          )}
         </section>
 
         {/* Listado */}
-        <section className="border border-[var(--card-border)] rounded-xl p-4 bg-[var(--card-bg)]">
-          <h2 className="font-semibold text-sm mb-3">Listado</h2>
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-[var(--foreground)]">
+              Tus tareas
+            </h2>
+            <span className="text-xs text-[var(--text-muted)] bg-[var(--card-bg)] px-3 py-1 rounded-full border border-[var(--card-border)]">
+              {filteredTasks.length} {filteredTasks.length === 1 ? 'tarea' : 'tareas'}
+            </span>
+          </div>
 
-          {loadingTasks && <p>Cargando tareas...</p>}
-
-          {!loadingTasks && filteredTasks.length === 0 && (
-            <p className="text-sm text-gray-400">
-              No hay tareas para el filtro seleccionado.
-            </p>
+          {loadingTasks && (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+            </div>
           )}
 
-          <ul className="flex flex-col gap-2">
+          {!loadingTasks && filteredTasks.length === 0 && (
+            <div className="text-center py-12 border border-dashed border-[var(--card-border)] rounded-2xl bg-[var(--card-bg)]/50">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[var(--accent)]/10 flex items-center justify-center">
+                <svg className="w-8 h-8 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+              </div>
+              <p className="text-[var(--text-muted)] mb-1">No hay tareas para mostrar</p>
+              <p className="text-xs text-[var(--text-muted)]">Agrega una nueva tarea o cambia los filtros</p>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3">
             {filteredTasks.map((task) => {
               const status = getStatusLabel(task);
 
               const statusClass =
                 status.tone === 'danger'
-                  ? 'bg-[var(--danger)]/15 text-[var(--danger)] border border-[var(--danger)]/40'
+                  ? 'bg-[var(--danger)]/15 text-[var(--danger)]'
                   : status.tone === 'warn'
-                    ? 'bg-[var(--warn)]/15 text-[var(--warn)] border border-[var(--warn)]/40'
+                    ? 'bg-[var(--warn)]/15 text-[var(--warn)]'
                     : status.tone === 'ok'
-                      ? 'bg-[var(--success)]/15 text-[var(--success)] border border-[var(--success)]/40'
-                      : 'bg-gray-400/10 text-gray-300 border border-gray-500/30';
+                      ? 'bg-[var(--success)]/15 text-[var(--success)]'
+                      : 'bg-[var(--card-bg)] text-[var(--text-muted)]';
 
               const course = getCourseLabel(task.course_id);
               const priorityLabel = getPriorityLabel(task.priority);
@@ -966,193 +975,220 @@ export default function TasksPage() {
               const subtasksLoading = !!subtasksLoadingByTaskId[task.id];
 
               return (
-                <li
+                <div
                   key={task.id}
-                  className="border border-[var(--card-border)] rounded-lg px-3 py-2 bg-[var(--card-bg)]"
+                  className={`group border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)] hover:border-[var(--primary-soft)]/30 transition-all duration-200 ${task.completed ? 'opacity-70' : ''}`}
                 >
-                  <div className="flex justify-between items-start gap-3">
-                    <div className="flex items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={task.completed}
-                        onChange={() => toggleCompleted(task)}
-                        className="mt-1"
-                      />
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <p
-                            className={`font-medium text-sm ${
-                              task.completed ? 'line-through opacity-60' : ''
-                            }`}
-                          >
-                            {task.title}
-                          </p>
+                  <div className="flex gap-4">
+                    {/* Checkbox personalizado */}
+                    <button
+                      type="button"
+                      onClick={() => toggleCompleted(task)}
+                      className={`flex-shrink-0 w-6 h-6 mt-0.5 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${
+                        task.completed
+                          ? 'bg-[var(--success)] border-[var(--success)]'
+                          : 'border-[var(--card-border)] hover:border-[var(--accent)]'
+                      }`}
+                    >
+                      {task.completed && (
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
 
+                    {/* Contenido principal */}
+                    <div className="flex-1 min-w-0">
+                      {/* Título y badges */}
+                      <div className="flex flex-wrap items-start gap-2 mb-2">
+                        <h3 className={`font-medium text-[var(--foreground)] ${task.completed ? 'line-through' : ''}`}>
+                          {task.title}
+                        </h3>
+                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-medium ${statusClass}`}>
+                          {status.label}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-medium ${priorityClass}`}>
+                          {priorityLabel}
+                        </span>
+                        {course && (
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${statusClass}`}
+                            className="px-2 py-0.5 rounded-lg text-[10px] font-medium"
+                            style={{
+                              backgroundColor: course.color ? `${course.color}25` : 'var(--card-bg)',
+                              color: course.color || 'var(--text-soft)',
+                            }}
                           >
-                            {status.label}
+                            {course.name}
                           </span>
+                        )}
+                      </div>
 
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] ${priorityClass}`}
-                          >
-                            Prioridad: {priorityLabel}
-                          </span>
+                      {/* Descripción */}
+                      {task.description && (
+                        <p className="text-sm text-[var(--text-muted)] mb-2">
+                          {task.description}
+                        </p>
+                      )}
 
-                          {course && (
+                      {/* Tags */}
+                      {tagsList.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {tagsList.map((tag, idx) => (
                             <span
-                              className="px-2 py-0.5 rounded-full text-[10px] border border-[var(--card-border)]"
-                              style={{
-                                backgroundColor: course.color
-                                  ? `${course.color}33`
-                                  : undefined,
-                              }}
+                              key={`${task.id}-tag-${idx}`}
+                              className="px-2 py-0.5 rounded-lg bg-[var(--primary-soft)]/15 text-[var(--primary-soft)] text-[10px]"
                             >
-                              {course.name}
+                              #{tag}
                             </span>
-                          )}
-
-                          {/* Badge subtareas (visible, pero ahora también hay botón a la derecha) */}
-                          <button
-                            type="button"
-                            onClick={() => toggleSubtasksPanel(task.id)}
-                            className="px-2 py-0.5 rounded-full text-[10px] border border-[var(--card-border)] hover:bg-white/10"
-                            title="Abrir checklist de subtareas"
-                          >
-                            {isExpanded ? 'Ocultar' : 'Subtareas'}
-                            {countsLabel ? ` (${countsLabel})` : ''}
-                          </button>
+                          ))}
                         </div>
+                      )}
 
-                        {task.description && (
-                          <p className="text-xs text-gray-200 mb-1">
-                            {task.description}
-                          </p>
-                        )}
-
-                        {tagsList.length > 0 && (
-                          <p className="text-[11px] text-gray-300 mb-1">
-                            Etiquetas:{' '}
-                            {tagsList.map((tag, idx) => (
-                              <span
-                                key={`${task.id}-tag-${idx}`}
-                                className="inline-block px-2 py-0.5 mr-1 mb-1 rounded-full border border-[var(--card-border)] text-[10px]"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </p>
-                        )}
-
+                      {/* Info adicional */}
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--text-muted)]">
                         {task.due_date && (
-                          <p className="text-[11px] text-gray-400">
-                            Fecha límite: {task.due_date}
-                          </p>
+                          <span className="flex items-center gap-1">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            {new Date(task.due_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+                          </span>
                         )}
-
                         {task.focusMinutes > 0 && (
-                          <p className="text-[11px] text-[var(--success)] mt-1">
-                            Tiempo Pomodoro dedicado: {task.focusMinutes} min
-                          </p>
+                          <span className="flex items-center gap-1 text-[var(--success)]">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            {task.focusMinutes} min
+                          </span>
+                        )}
+                        {countsLabel && (
+                          <span className="flex items-center gap-1">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                            {countsLabel}
+                          </span>
                         )}
                       </div>
                     </div>
 
-                    <div className="flex flex-col gap-1 items-end">
-                      {/* Botón explícito para subtareas (más evidente) */}
+                    {/* Acciones */}
+                    <div className="flex-shrink-0 flex items-start gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         type="button"
                         onClick={() => toggleSubtasksPanel(task.id)}
-                        className="text-[11px] text-[var(--accent)] hover:underline"
+                        className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-all"
+                        title="Subtareas"
                       >
-                        {isExpanded ? 'Ocultar subtareas' : 'Subtareas'}
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
                       </button>
-
                       <button
+                        type="button"
                         onClick={() => openEditTask(task)}
-                        className="text-[11px] text-[var(--accent)] hover:underline"
+                        className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-all"
+                        title="Editar"
                       >
-                        Editar
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
                       </button>
                       <button
+                        type="button"
                         onClick={() => askDeleteTask(task)}
-                        className="text-[11px] text-red-400 hover:underline"
+                        className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-all"
+                        title="Eliminar"
                       >
-                        Eliminar
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
                       </button>
                     </div>
                   </div>
 
-                  {/* Panel subtareas */}
+                  {/* Panel subtareas expandible */}
                   {isExpanded && (
-                    <div className="mt-3 ml-7 border-t border-[var(--card-border)] pt-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-xs text-gray-400">
-                          Checklist de subtareas
-                          {counts.total > 0
-                            ? ` · Progreso ${counts.done}/${counts.total}`
-                            : ''}
-                        </p>
-
+                    <div className="mt-4 pt-4 border-t border-[var(--card-border)]">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-[var(--foreground)]">Subtareas</span>
+                          {counts.total > 0 && (
+                            <span className="text-xs text-[var(--text-muted)]">
+                              {counts.done}/{counts.total} completadas
+                            </span>
+                          )}
+                        </div>
                         <button
                           type="button"
                           onClick={() => ensureSubtasksLoaded(task.id)}
-                          className="text-[11px] text-[var(--accent)] hover:underline"
+                          className="text-xs text-[var(--accent)] hover:underline"
                         >
                           Recargar
                         </button>
                       </div>
 
+                      {/* Progress bar */}
+                      {counts.total > 0 && (
+                        <div className="h-1.5 bg-[var(--card-border)] rounded-full mb-3 overflow-hidden">
+                          <div
+                            className="h-full bg-[var(--success)] rounded-full transition-all duration-300"
+                            style={{ width: `${(counts.done / counts.total) * 100}%` }}
+                          />
+                        </div>
+                      )}
+
                       {subtasksLoading && (
-                        <p className="text-xs text-gray-400">Cargando subtareas...</p>
+                        <div className="flex items-center gap-2 py-2">
+                          <div className="w-4 h-4 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                          <span className="text-sm text-[var(--text-muted)]">Cargando...</span>
+                        </div>
                       )}
 
                       {!subtasksLoading && subtasks.length === 0 && (
-                        <p className="text-xs text-gray-400">
-                          Aún no hay subtareas. Agregue la primera.
+                        <p className="text-sm text-[var(--text-muted)] py-2">
+                          No hay subtareas. Agrega la primera.
                         </p>
                       )}
 
                       {!subtasksLoading && subtasks.length > 0 && (
-                        <ul className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-2 mb-3">
                           {subtasks.map((s) => (
-                            <li
+                            <div
                               key={s.id}
-                              className="flex items-start justify-between gap-2"
+                              className="flex items-center justify-between gap-2 p-2 rounded-lg bg-[var(--background)] group/subtask"
                             >
-                              <label className="flex items-start gap-2 text-sm">
+                              <label className="flex items-center gap-2 flex-1 cursor-pointer">
                                 <input
                                   type="checkbox"
                                   checked={s.completed}
                                   onChange={() => toggleSubtaskCompleted(task.id, s)}
-                                  className="mt-1"
+                                  className="w-4 h-4 rounded accent-[var(--success)]"
                                 />
-                                <span
-                                  className={`text-sm ${
-                                    s.completed ? 'line-through opacity-60' : ''
-                                  }`}
-                                >
+                                <span className={`text-sm ${s.completed ? 'line-through text-[var(--text-muted)]' : 'text-[var(--foreground)]'}`}>
                                   {s.title}
                                 </span>
                               </label>
-
                               <button
                                 type="button"
                                 onClick={() => deleteSubtask(task.id, s.id)}
-                                className="text-[11px] text-red-400 hover:underline"
+                                className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--danger)] opacity-0 group-hover/subtask:opacity-100 transition-all"
                               >
-                                Eliminar
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
                               </button>
-                            </li>
+                            </div>
                           ))}
-                        </ul>
+                        </div>
                       )}
 
-                      <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                      {/* Agregar subtarea */}
+                      <div className="flex gap-2">
                         <input
                           type="text"
-                          className="flex-1 border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)] text-sm"
+                          className="flex-1 border border-[var(--card-border)] rounded-xl px-3 py-2 bg-[var(--background)] text-sm text-[var(--foreground)] placeholder:text-[var(--text-muted)]"
                           placeholder="Nueva subtarea..."
                           value={newSubtaskTitleByTaskId[task.id] ?? ''}
                           onChange={(e) =>
@@ -1171,17 +1207,17 @@ export default function TasksPage() {
                         <button
                           type="button"
                           onClick={() => addSubtask(task.id)}
-                          className="px-3 py-1 rounded-md border border-[var(--card-border)] hover:bg-white/10 text-sm"
+                          className="px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--foreground)] text-sm font-medium hover:opacity-90 transition-opacity"
                         >
-                          Agregar subtarea
+                          Agregar
                         </button>
                       </div>
                     </div>
                   )}
-                </li>
+                </div>
               );
             })}
-          </ul>
+          </div>
         </section>
       </main>
 
@@ -1202,18 +1238,36 @@ export default function TasksPage() {
         onConfirm={confirmDeleteTask}
       />
 
-      {/* Confirmación limpiar completadas */}
+      {/* Confirmación limpiar completadas - Paso 1 */}
       <ConfirmDialog
-        open={showClearCompleted}
+        open={clearConfirmStep === 1}
         title="Limpiar tareas completadas"
         description={
           <>
-            Se eliminarán todas las tareas marcadas como{' '}
-            <span className="font-medium">completadas</span>. Esta acción no se
-            puede deshacer.
+            Se eliminarán <span className="font-medium text-[var(--danger)]">{completedCount} {completedCount === 1 ? 'tarea completada' : 'tareas completadas'}</span>.
+            <br />
+            <span className="text-[var(--text-muted)]">Esta acción no se puede deshacer.</span>
           </>
         }
-        confirmLabel="Limpiar"
+        confirmLabel="Continuar"
+        cancelLabel="Cancelar"
+        loading={false}
+        onCancel={cancelClearCompleted}
+        onConfirm={confirmClearCompleted}
+      />
+
+      {/* Confirmación limpiar completadas - Paso 2 (confirmación final) */}
+      <ConfirmDialog
+        open={clearConfirmStep === 2}
+        title="⚠️ Confirmación final"
+        description={
+          <>
+            <span className="font-medium">¿Está completamente seguro?</span>
+            <br /><br />
+            Esta acción eliminará permanentemente {completedCount} {completedCount === 1 ? 'tarea' : 'tareas'} y <span className="text-[var(--danger)] font-medium">no se puede deshacer</span>.
+          </>
+        }
+        confirmLabel="Sí, eliminar todo"
         cancelLabel="Cancelar"
         loading={clearing}
         onCancel={cancelClearCompleted}
@@ -1304,6 +1358,135 @@ export default function TasksPage() {
         onCancel={cancelEditTask}
         onConfirm={confirmEditTask}
       />
+
+      {/* Modal Nueva Tarea */}
+      {showNewTaskModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Overlay */}
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowNewTaskModal(false)}
+          />
+
+          {/* Modal */}
+          <div className="relative w-full max-w-lg bg-[var(--background)] border border-[var(--card-border)] rounded-2xl shadow-xl">
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b border-[var(--card-border)]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[var(--accent)] flex items-center justify-center">
+                  <svg className="w-5 h-5 text-[var(--foreground)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="font-semibold text-[var(--foreground)]">Nueva tarea</h2>
+                  <p className="text-xs text-[var(--text-muted)]">Agrega una nueva tarea a tu lista</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNewTaskModal(false)}
+                className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--foreground)] hover:bg-[var(--card-bg)] transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <form onSubmit={handleAddTask} className="p-5 flex flex-col gap-4">
+              <input
+                type="text"
+                placeholder="¿Qué necesitas hacer?"
+                className="w-full border border-[var(--card-border)] rounded-xl px-4 py-3 bg-[var(--card-bg)] text-[var(--foreground)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                autoFocus
+                required
+              />
+
+              <textarea
+                placeholder="Descripción (opcional)"
+                className="w-full border border-[var(--card-border)] rounded-xl px-4 py-3 bg-[var(--card-bg)] text-[var(--foreground)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50 resize-none"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs text-[var(--text-soft)]">Fecha límite</span>
+                  <input
+                    type="date"
+                    className="border border-[var(--card-border)] rounded-xl px-3 py-2.5 bg-[var(--card-bg)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs text-[var(--text-soft)]">Materia</span>
+                  <select
+                    className="border border-[var(--card-border)] rounded-xl px-3 py-2.5 bg-[var(--card-bg)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                    value={newTaskCourseId}
+                    onChange={(e) => setNewTaskCourseId(e.target.value)}
+                    disabled={loadingCourses}
+                  >
+                    <option value="none">Sin materia</option>
+                    {courses.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs text-[var(--text-soft)]">Prioridad</span>
+                  <select
+                    className="border border-[var(--card-border)] rounded-xl px-3 py-2.5 bg-[var(--card-bg)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                    value={newTaskPriority}
+                    onChange={(e) => setNewTaskPriority(e.target.value as Priority)}
+                  >
+                    <option value="high">Alta</option>
+                    <option value="medium">Media</option>
+                    <option value="low">Baja</option>
+                  </select>
+                </label>
+              </div>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs text-[var(--text-soft)]">Etiquetas (separadas por coma)</span>
+                <input
+                  type="text"
+                  className="border border-[var(--card-border)] rounded-xl px-4 py-2.5 bg-[var(--card-bg)] text-[var(--foreground)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                  value={newTaskTags}
+                  onChange={(e) => setNewTaskTags(e.target.value)}
+                  placeholder="parcial, tp, final..."
+                />
+              </label>
+
+              {/* Footer */}
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewTaskModal(false)}
+                  className="px-4 py-2.5 rounded-xl border border-[var(--card-border)] text-[var(--foreground)] font-medium hover:bg-[var(--card-bg)] transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl bg-[var(--accent)] text-[var(--foreground)] font-semibold hover:opacity-90 transition-opacity"
+                >
+                  Crear tarea
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }

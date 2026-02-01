@@ -181,122 +181,190 @@ export default function CalendarPage() {
 
   if (loading || (!user && !loading)) {
     return (
-      <main className="flex items-center justify-center min-h-screen">
-        <p>Cargando...</p>
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
       </main>
     );
   }
 
   const weekdays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Stats del mes actual
+  const monthStats = useMemo(() => {
+    const totalTasks = daysInfo.filter(d => d && d.tasksDue > 0).reduce((acc, d) => acc + (d?.tasksDue || 0), 0);
+    const totalMinutes = daysInfo.filter(d => d && d.minutesFocus > 0).reduce((acc, d) => acc + (d?.minutesFocus || 0), 0);
+    const daysWithActivity = daysInfo.filter(d => d && (d.tasksDue > 0 || d.minutesFocus > 0)).length;
+    return { totalTasks, totalMinutes, daysWithActivity };
+  }, [daysInfo]);
 
   return (
-    <main className="max-w-4xl mx-auto px-4 py-8">
-      <header className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-2xl font-bold">Calendario</h1>
-          <p className="text-sm text-gray-400">
-            Visualice tareas y tiempo de estudio por día.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 text-sm">
-          <button
-            onClick={goPrevMonth}
-            className="px-2 py-1 border border-[var(--card-border)] rounded-md hover:bg-white/10"
-          >
-            «
-          </button>
-          <span className="font-semibold capitalize">
-            {monthLabel}
-          </span>
-          <button
-            onClick={goNextMonth}
-            className="px-2 py-1 border border-[var(--card-border)] rounded-md hover:bg-white/10"
-          >
-            »
-          </button>
-        </div>
+    <main className="max-w-5xl mx-auto px-4 py-10 flex flex-col gap-8">
+      {/* Header */}
+      <header className="text-center">
+        <h1 className="text-3xl font-bold mb-2 text-[var(--foreground)]">
+          Calendario
+        </h1>
+        <p className="text-[var(--text-muted)] max-w-md mx-auto">
+          Visualiza tus tareas y tiempo de estudio organizados por día
+        </p>
       </header>
 
+      {/* Navegación del mes */}
+      <section className="flex items-center justify-center gap-4">
+        <button
+          onClick={goPrevMonth}
+          className="p-2 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-muted)] hover:text-[var(--foreground)] hover:border-[var(--primary-soft)] transition-all duration-200"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+
+        <div className="min-w-[200px] text-center">
+          <h2 className="text-xl font-semibold text-[var(--foreground)] capitalize">
+            {monthLabel}
+          </h2>
+        </div>
+
+        <button
+          onClick={goNextMonth}
+          className="p-2 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-muted)] hover:text-[var(--foreground)] hover:border-[var(--primary-soft)] transition-all duration-200"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </section>
+
+      {/* Stats del mes */}
+      <section className="grid grid-cols-3 gap-3">
+        <div className="border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)] text-center">
+          <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-[var(--accent)]/15 flex items-center justify-center">
+            <svg className="w-5 h-5 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+          </div>
+          <p className="text-2xl font-bold text-[var(--foreground)]">{monthStats.totalTasks}</p>
+          <p className="text-xs text-[var(--text-muted)]">Tareas este mes</p>
+        </div>
+
+        <div className="border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)] text-center">
+          <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-[var(--success)]/15 flex items-center justify-center">
+            <svg className="w-5 h-5 text-[var(--success)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <p className="text-2xl font-bold text-[var(--foreground)]">{monthStats.totalMinutes}</p>
+          <p className="text-xs text-[var(--text-muted)]">Minutos de enfoque</p>
+        </div>
+
+        <div className="border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)] text-center">
+          <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-[var(--primary-soft)]/15 flex items-center justify-center">
+            <svg className="w-5 h-5 text-[var(--primary-soft)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <p className="text-2xl font-bold text-[var(--foreground)]">{monthStats.daysWithActivity}</p>
+          <p className="text-xs text-[var(--text-muted)]">Días con actividad</p>
+        </div>
+      </section>
+
       {error && (
-        <p className="text-sm text-red-400 mb-3">{error}</p>
+        <p className="text-sm text-[var(--danger)] bg-[var(--danger)]/10 px-4 py-2 rounded-lg text-center">
+          {error}
+        </p>
       )}
 
-      <section className="border border-[var(--card-border)] rounded-xl p-3 bg-[var(--card-bg)]">
+      {/* Calendario */}
+      <section className="border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)] backdrop-blur-sm">
         {loadingData ? (
-          <p>Cargando datos...</p>
+          <div className="flex items-center justify-center py-12">
+            <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+          </div>
         ) : (
           <>
-            <div className="grid grid-cols-7 text-center text-xs font-semibold text-gray-400 mb-2">
+            {/* Días de la semana */}
+            <div className="grid grid-cols-7 text-center mb-3">
               {weekdays.map((d) => (
-                <div key={d} className="py-1">
+                <div key={d} className="py-2 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">
                   {d}
                 </div>
               ))}
             </div>
 
-            <div className="grid grid-cols-7 gap-1 text-xs">
+            {/* Grid de días */}
+            <div className="grid grid-cols-7 gap-2">
               {daysInfo.map((info, idx) => {
-              if (!info) {
+                if (!info) {
+                  return (
+                    <div key={idx} className="aspect-square rounded-xl bg-transparent" />
+                  );
+                }
+
+                const isToday = info.date === todayStr;
+
                 return (
                   <div
-                    key={idx}
-                    className="h-20 rounded-md bg-transparent"
-                  />
+                    key={info.date}
+                    className={`
+                      aspect-square rounded-xl border p-2 flex flex-col transition-all duration-200
+                      ${isToday
+                        ? 'border-[var(--accent)] bg-[var(--accent)]/10 ring-2 ring-[var(--accent)]/30'
+                        : 'border-[var(--card-border)] bg-[var(--background)] hover:border-[var(--primary-soft)]/50'
+                      }
+                    `}
+                  >
+                    {/* Número del día */}
+                    <div className="flex items-center justify-between">
+                      <span className={`text-sm font-semibold ${isToday ? 'text-[var(--accent)]' : 'text-[var(--foreground)]'}`}>
+                        {info.dayNumber}
+                      </span>
+                      {isToday && (
+                        <span className="w-2 h-2 rounded-full bg-[var(--accent)]" />
+                      )}
+                    </div>
+
+                    {/* Indicadores */}
+                    <div className="flex-1 flex flex-col justify-end gap-1">
+                      {info.tasksDue > 0 && (
+                        <div className="flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
+                          <span className="text-[10px] text-[var(--accent)] font-medium">
+                            {info.tasksDue} {info.tasksDue === 1 ? 'tarea' : 'tareas'}
+                          </span>
+                        </div>
+                      )}
+                      {info.minutesFocus > 0 && (
+                        <div className="flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" />
+                          <span className="text-[10px] text-[var(--success)] font-medium">
+                            {info.minutesFocus} min
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 );
-              }
-            
-              const isToday =
-                info.date === new Date().toISOString().slice(0, 10);
-            
-              return (
-                <div
-                  key={info.date}
-                  className={`
-                    h-20 rounded-md border border-[var(--card-border)]
-                    px-1.5 py-1 flex flex-col justify-between
-                    bg-[var(--card-bg)]
-                    ${isToday ? 'ring-1 ring-[var(--accent)]' : ''}
-                  `}
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="text-[11px] font-semibold">
-                      {info.dayNumber}
-                    </span>
-                  </div>
-                
-                  <div className="space-y-1">
-                    {info.tasksDue > 0 && (
-                      <p className="text-[10px] text-[var(--accent)]">
-                        Tareas: {info.tasksDue}
-                      </p>
-                    )}
-                    {info.minutesFocus > 0 && (
-                      <p className="text-[10px] text-[var(--success)]">
-                        Min Pomodoro: {info.minutesFocus}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+              })}
             </div>
           </>
         )}
       </section>
 
-      <section className="mt-4 text-xs text-gray-400 flex flex-wrap gap-4">
+      {/* Leyenda */}
+      <section className="flex flex-wrap justify-center gap-6 text-sm">
         <div className="flex items-center gap-2">
-          <span className="inline-block w-3 h-3 rounded-sm bg-[var(--accent)]" />
-          <span>Tareas con fecha límite ese día</span>
+          <span className="w-3 h-3 rounded-full bg-[var(--accent)]" />
+          <span className="text-[var(--text-muted)]">Tareas programadas</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="inline-block w-3 h-3 rounded-sm bg-emerald-400" />
-          <span>Minutos de enfoque registrados ese día</span>
+          <span className="w-3 h-3 rounded-full bg-[var(--success)]" />
+          <span className="text-[var(--text-muted)]">Tiempo de enfoque</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="inline-block w-3 h-3 rounded-full border border-[var(--accent)]" />
-          <span>Día actual</span>
+          <span className="w-3 h-3 rounded-full border-2 border-[var(--accent)] bg-[var(--accent)]/20" />
+          <span className="text-[var(--text-muted)]">Día actual</span>
         </div>
       </section>
     </main>

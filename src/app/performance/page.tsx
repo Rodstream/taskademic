@@ -69,19 +69,19 @@ type CourseAverage = {
   count: number;
 };
 
-// Color "semáforo" para notas (varía solo por nota, no por tema)
+// Color "semáforo" para notas
 function gradeColor(value: number) {
   if (value >= 7) return 'var(--success)';
   if (value >= 4) return 'var(--warn)';
   return 'var(--danger)';
 }
 
-// Color de barra según tema (violeta en claro, naranja en oscuro)
+// Color de barra según tema
 function chartFillColor(theme: string | undefined) {
   if (theme === 'dark') {
-    return 'var(--accent)'; // naranja en modo oscuro
+    return 'var(--accent)';
   }
-  return 'var(--primary-soft)'; // violeta en modo claro
+  return 'var(--primary-soft)';
 }
 
 export default function PerformancePage() {
@@ -199,7 +199,7 @@ export default function PerformancePage() {
         weekStreak: streak,
       });
 
-      // ====== Notas y materias ======
+      // Notas y materias
       const { data: coursesData, error: coursesError } = await supabaseClient
         .from('courses')
         .select('id, name')
@@ -267,7 +267,6 @@ export default function PerformancePage() {
     if (timeUnit === 'minutes') {
       return dailyData.map((p) => ({ ...p, value: p.minutes }));
     }
-    // horas
     return dailyData.map((p) => ({ ...p, value: p.minutes / 60 }));
   }, [dailyData, timeUnit]);
 
@@ -317,118 +316,121 @@ export default function PerformancePage() {
     );
   }, [courseAverages]);
 
+  // Promedio general
+  const generalAverage = useMemo(() => {
+    if (!courseGrades.length) return null;
+    const sum = courseGrades.reduce((acc, g) => acc + g.grade, 0);
+    return sum / courseGrades.length;
+  }, [courseGrades]);
+
   if (loading || (!user && !loading)) {
     return (
-      <main className="flex items-center justify-center min-h-screen">
-        <p>Cargando...</p>
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
       </main>
     );
   }
 
   return (
-    <main className="max-w-3xl mx-auto px-4 py-8 flex flex-col gap-6">
-      <section>
-        <h1 className="text-2xl font-bold mb-2">Rendimiento</h1>
-        <p className="text-sm text-gray-400">
-          Este panel muestra estadísticas de estudio (Pomodoro, tareas) y
-          rendimiento académico según las notas registradas en Taskademic.
+    <main className="max-w-5xl mx-auto px-4 py-10 flex flex-col gap-8">
+      {/* Header */}
+      <header className="text-center">
+        <h1 className="text-3xl font-bold mb-2 text-[var(--foreground)]">
+          Rendimiento
+        </h1>
+        <p className="text-[var(--text-muted)] max-w-md mx-auto">
+          Estadísticas de estudio y rendimiento académico
         </p>
-      </section>
+      </header>
 
       {error && (
-        <p className="mb-4 text-sm text-red-400">
+        <p className="text-sm text-[var(--danger)] bg-[var(--danger)]/10 px-4 py-2 rounded-lg text-center">
           {error}
         </p>
       )}
 
       {loadingStats ? (
-        <p>Cargando estadísticas...</p>
+        <div className="flex items-center justify-center py-12">
+          <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+        </div>
       ) : (
         <>
-          {/* Tarjetas de resumen */}
-          <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-              <h2 className="text-sm font-semibold mb-2">
-                Pomodoros completados
-              </h2>
-              <p className="text-3xl font-bold">
-                {stats.totalPomodoros}
-              </p>
-              <p className="text-xs text-gray-400 mt-2">
-                Cantidad total de ciclos de enfoque registrados.
-              </p>
-            </article>
+          {/* Tarjetas de estadísticas principales */}
+          <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)] text-center">
+              <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-[var(--accent)]/15 flex items-center justify-center">
+                <svg className="w-5 h-5 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-2xl font-bold text-[var(--foreground)]">{stats.totalPomodoros}</p>
+              <p className="text-xs text-[var(--text-muted)]">Pomodoros</p>
+            </div>
 
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-              <h2 className="text-sm font-semibold mb-2">
-                Minutos de enfoque totales
-              </h2>
-              <p className="text-3xl font-bold">
-                {stats.totalMinutesFocus}
-              </p>
-              <p className="text-xs text-gray-400 mt-2">
-                Tiempo acumulado dedicado al estudio.
-              </p>
-            </article>
+            <div className="border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)] text-center">
+              <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-[var(--success)]/15 flex items-center justify-center">
+                <svg className="w-5 h-5 text-[var(--success)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <p className="text-2xl font-bold text-[var(--foreground)]">{stats.totalMinutesFocus}</p>
+              <p className="text-xs text-[var(--text-muted)]">Min. enfoque</p>
+            </div>
 
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-              <h2 className="text-sm font-semibold mb-2">
-                Minutos vinculados a tareas
-              </h2>
-              <p className="text-3xl font-bold">
-                {stats.minutesLinkedToTasks}
-              </p>
-              <p className="text-xs text-gray-400 mt-2">
-                Tiempo de enfoque asociado explícitamente a una tarea de la
-                lista.
-              </p>
-            </article>
+            <div className="border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)] text-center">
+              <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-[var(--primary-soft)]/15 flex items-center justify-center">
+                <svg className="w-5 h-5 text-[var(--primary-soft)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+              </div>
+              <p className="text-2xl font-bold text-[var(--foreground)]">{stats.minutesLinkedToTasks}</p>
+              <p className="text-xs text-[var(--text-muted)]">Min. en tareas</p>
+            </div>
 
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-              <h2 className="text-sm font-semibold mb-2">
-                Tareas completadas
-              </h2>
-              <p className="text-3xl font-bold">
-                {stats.tasksCompleted}
-              </p>
-              <p className="text-xs text-gray-400 mt-2">
-                Tareas marcadas como completadas en el gestor.
-              </p>
-            </article>
+            <div className="border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)] text-center">
+              <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-[var(--success)]/15 flex items-center justify-center">
+                <svg className="w-5 h-5 text-[var(--success)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-2xl font-bold text-[var(--foreground)]">{stats.tasksCompleted}</p>
+              <p className="text-xs text-[var(--text-muted)]">Completadas</p>
+            </div>
 
-            <article className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] sm:col-span-2">
-              <h2 className="text-sm font-semibold mb-2">
-                Racha de estudio
-              </h2>
-              <p className="text-3xl font-bold">
-                {stats.weekStreak} días
-              </p>
-              <p className="text-xs text-gray-400 mt-2">
-                Días consecutivos (empezando hoy) con al menos una sesión de
-                Pomodoro.
-              </p>
-            </article>
+            <div className="border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)] text-center col-span-2 sm:col-span-1">
+              <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-[var(--warn)]/15 flex items-center justify-center">
+                <svg className="w-5 h-5 text-[var(--warn)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+                </svg>
+              </div>
+              <p className="text-2xl font-bold text-[var(--foreground)]">{stats.weekStreak}</p>
+              <p className="text-xs text-[var(--text-muted)]">Racha (días)</p>
+            </div>
           </section>
 
           {/* Gráfico: últimos 7 días */}
-          <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)] mb-2">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h2 className="text-sm font-semibold">
-                  Enfoque (últimos 7 días)
-                </h2>
-                <p className="text-xs text-gray-400">
-                  Suma diaria de tiempo de estudio registrado con el Pomodoro.
-                </p>
+          <section className="border border-[var(--card-border)] rounded-2xl p-6 bg-[var(--card-bg)] backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/15 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="font-semibold text-[var(--foreground)]">Enfoque semanal</h2>
+                  <p className="text-xs text-[var(--text-muted)]">Tiempo de estudio en los últimos 7 días</p>
+                </div>
               </div>
-              <div className="inline-flex text-xs border border-[var(--card-border)] rounded-full overflow-hidden">
+
+              <div className="inline-flex border border-[var(--card-border)] rounded-xl overflow-hidden bg-[var(--background)]">
                 <button
                   type="button"
                   onClick={() => setTimeUnit('minutes')}
-                  className={`px-3 py-1 ${
+                  className={`px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
                     timeUnit === 'minutes'
                       ? 'bg-[var(--accent)] text-[var(--foreground)]'
-                      : 'bg-transparent'
+                      : 'text-[var(--text-muted)] hover:text-[var(--foreground)]'
                   }`}
                 >
                   Minutos
@@ -436,10 +438,10 @@ export default function PerformancePage() {
                 <button
                   type="button"
                   onClick={() => setTimeUnit('hours')}
-                  className={`px-3 py-1 ${
+                  className={`px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
                     timeUnit === 'hours'
                       ? 'bg-[var(--accent)] text-[var(--foreground)]'
-                      : 'bg-transparent'
+                      : 'text-[var(--text-muted)] hover:text-[var(--foreground)]'
                   }`}
                 >
                   Horas
@@ -448,9 +450,15 @@ export default function PerformancePage() {
             </div>
 
             {chartData.every((p) => p.value === 0) ? (
-              <p className="text-sm text-gray-400">
-                Aún no hay sesiones de Pomodoro registradas en los últimos días.
-              </p>
+              <div className="text-center py-12 border border-dashed border-[var(--card-border)] rounded-xl bg-[var(--background)]/50">
+                <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-[var(--accent)]/10 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-[var(--text-muted)] mb-1">Sin actividad reciente</p>
+                <p className="text-xs text-[var(--text-muted)]">Usa el Pomodoro para registrar tu tiempo de estudio</p>
+              </div>
             ) : (
               <div className="w-full h-64">
                 <ResponsiveContainer width="100%" height="100%">
@@ -458,20 +466,28 @@ export default function PerformancePage() {
                     <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                     <XAxis
                       dataKey="label"
-                      tick={{ fontSize: 11 }}
+                      tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
                       axisLine={false}
+                      tickLine={false}
                     />
                     <YAxis
                       fontSize={11}
+                      tick={{ fill: 'var(--text-muted)' }}
+                      axisLine={false}
+                      tickLine={false}
                       tickFormatter={(value) => {
                         const num = Number(value);
                         if (isNaN(num)) return value;
-                        return timeUnit === 'minutes'
-                          ? num
-                          : num.toFixed(1);
+                        return timeUnit === 'minutes' ? String(num) : num.toFixed(1);
                       }}
                     />
                     <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'var(--card-bg)',
+                        border: '1px solid var(--card-border)',
+                        borderRadius: '12px',
+                        fontSize: '12px',
+                      }}
                       formatter={(value) => {
                         const num = Number(value);
                         if (isNaN(num)) return value as string;
@@ -480,70 +496,86 @@ export default function PerformancePage() {
                           : `${num.toFixed(2)} h`;
                       }}
                     />
-                    <Bar dataKey="value" fill={chartFillColor(theme)} />
+                    <Bar dataKey="value" fill={chartFillColor(theme)} radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             )}
           </section>
 
-          {/* Notas por materia */}
-          <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-            <h2 className="text-sm font-semibold mb-1">
-              Notas por materia
-            </h2>
-            <p className="text-xs text-gray-400 mb-3">
-              Promedios de exámenes registrados en la sección &quot;Notas de
-              exámenes&quot;.
-            </p>
+          {/* Rendimiento académico */}
+          <section className="border border-[var(--card-border)] rounded-2xl p-6 bg-[var(--card-bg)] backdrop-blur-sm">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-[var(--primary-soft)]/15 flex items-center justify-center">
+                <svg className="w-5 h-5 text-[var(--primary-soft)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="font-semibold text-[var(--foreground)]">Rendimiento académico</h2>
+                <p className="text-xs text-[var(--text-muted)]">Promedios de notas por materia</p>
+              </div>
+            </div>
 
             {courseAverages.length === 0 ? (
-              <p className="text-sm text-gray-400">
-                Todavía no hay notas registradas. Cargue notas en la sección
-                &quot;Notas de exámenes&quot; para ver su rendimiento académico
-                por materia.
-              </p>
+              <div className="text-center py-8 border border-dashed border-[var(--card-border)] rounded-xl bg-[var(--background)]/50">
+                <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-[var(--primary-soft)]/10 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-[var(--primary-soft)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <p className="text-[var(--text-muted)] mb-1">Sin notas registradas</p>
+                <p className="text-xs text-[var(--text-muted)]">Registra tus notas en la sección de Notas</p>
+              </div>
             ) : (
               <>
-                {(bestCourse || weakestCourse) && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                    {bestCourse && (
-                      <article className="border border-[var(--card-border)] rounded-lg px-3 py-2 bg-[var(--card-bg)]">
-                        <h3 className="text-xs font-semibold text-[var(--text-muted)] mb-1">
-                          Mejor materia
-                        </h3>
-                        <p className="text-sm font-semibold">
-                          {bestCourse.courseName}
-                        </p>
-                        <p
-                          className="text-sm font-semibold"
-                          style={{ color: gradeColor(bestCourse.average) }}
-                        >
-                          Promedio: {bestCourse.average.toFixed(2)}
-                        </p>
-                      </article>
-                    )}
+                {/* Resumen de materias */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                  {generalAverage !== null && (
+                    <div className="border border-[var(--card-border)] rounded-xl p-4 bg-[var(--background)]">
+                      <p className="text-xs text-[var(--text-muted)] mb-1">Promedio general</p>
+                      <p
+                        className="text-2xl font-bold"
+                        style={{ color: gradeColor(generalAverage) }}
+                      >
+                        {generalAverage.toFixed(2)}
+                      </p>
+                    </div>
+                  )}
 
-                    {weakestCourse && (
-                      <article className="border border-[var(--card-border)] rounded-lg px-3 py-2 bg-[var(--card-bg)]">
-                        <h3 className="text-xs font-semibold text-[var(--text-muted)] mb-1">
-                          Materia a reforzar
-                        </h3>
-                          <p className="text-sm font-semibold">
-                          {weakestCourse.courseName}
-                        </p>
-                        <p
-                          className="text-sm font-semibold"
-                          style={{ color: gradeColor(weakestCourse.average) }}
-                        >
-                          Promedio: {weakestCourse.average.toFixed(2)}
-                        </p>
-                      </article>
-                    )}
-                  </div>
-                )}
+                  {bestCourse && (
+                    <div className="border border-[var(--card-border)] rounded-xl p-4 bg-[var(--background)]">
+                      <p className="text-xs text-[var(--text-muted)] mb-1">Mejor materia</p>
+                      <p className="text-sm font-medium text-[var(--foreground)] truncate">
+                        {bestCourse.courseName}
+                      </p>
+                      <p
+                        className="text-lg font-bold"
+                        style={{ color: gradeColor(bestCourse.average) }}
+                      >
+                        {bestCourse.average.toFixed(2)}
+                      </p>
+                    </div>
+                  )}
 
-                <div className="w-full h-64 mb-4">
+                  {weakestCourse && (
+                    <div className="border border-[var(--card-border)] rounded-xl p-4 bg-[var(--background)]">
+                      <p className="text-xs text-[var(--text-muted)] mb-1">A reforzar</p>
+                      <p className="text-sm font-medium text-[var(--foreground)] truncate">
+                        {weakestCourse.courseName}
+                      </p>
+                      <p
+                        className="text-lg font-bold"
+                        style={{ color: gradeColor(weakestCourse.average) }}
+                      >
+                        {weakestCourse.average.toFixed(2)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Gráfico de notas */}
+                <div className="w-full h-64 mb-6">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={courseAverages}
@@ -552,22 +584,32 @@ export default function PerformancePage() {
                       <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                       <XAxis
                         dataKey="courseName"
-                        tick={{ fontSize: 12 }}
+                        tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
                         interval={0}
                         angle={-25}
                         textAnchor="end"
                         dy={10}
+                        axisLine={false}
+                        tickLine={false}
                       />
                       <YAxis
                         domain={[0, 10]}
-                        tick={{ fontSize: 11 }}
+                        tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                        axisLine={false}
+                        tickLine={false}
                         tickFormatter={(value) => {
                           const num = Number(value);
                           if (isNaN(num)) return value;
-                          return num.toFixed(1);
+                          return num.toFixed(0);
                         }}
                       />
                       <Tooltip
+                        contentStyle={{
+                          backgroundColor: 'var(--card-bg)',
+                          border: '1px solid var(--card-border)',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                        }}
                         formatter={(value, _name, props) => {
                           const num = Number(value);
                           const label = props?.payload?.courseName ?? 'Materia';
@@ -575,7 +617,7 @@ export default function PerformancePage() {
                           return [`${num.toFixed(2)}`, label];
                         }}
                       />
-                      <Bar dataKey="average" radius={[4, 4, 0, 0]}>
+                      <Bar dataKey="average" radius={[6, 6, 0, 0]}>
                         {courseAverages.map((c) => (
                           <Cell
                             key={c.courseId}
@@ -587,50 +629,58 @@ export default function PerformancePage() {
                   </ResponsiveContainer>
                 </div>
 
-                <ul className="text-sm text-gray-300 space-y-1">
+                {/* Lista de materias */}
+                <div className="flex flex-col gap-2">
                   {courseAverages.map((c) => (
-                    <li
+                    <div
                       key={c.courseId}
-                      className="flex items-center justify-between border border-[var(--card-border)] rounded-md px-3 py-2 bg-[var(--card-bg)]"
+                      className="flex items-center justify-between p-3 rounded-xl bg-[var(--background)] border border-[var(--card-border)] hover:border-[var(--primary-soft)]/30 transition-all duration-200"
                     >
-                      <div className="flex flex-col">
-                        <span className="font-semibold">
-                          {c.courseName}
-                        </span>
-                        <span className="text-xs text-gray-400">
-                          {c.count} examen{c.count !== 1 && 'es'} registrados
-                        </span>
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm"
+                          style={{ backgroundColor: gradeColor(c.average) }}
+                        >
+                          {c.average.toFixed(1)}
+                        </div>
+                        <div>
+                          <p className="font-medium text-[var(--foreground)]">
+                            {c.courseName}
+                          </p>
+                          <p className="text-xs text-[var(--text-muted)]">
+                            {c.count} {c.count === 1 ? 'examen' : 'exámenes'}
+                          </p>
+                        </div>
                       </div>
-                      <span
-                        className="text-sm font-semibold"
-                        style={{ color: gradeColor(c.average) }}
-                      >
-                        {c.average.toFixed(2)}
-                      </span>
-                    </li>
+                      <div className="text-right">
+                        <p
+                          className="text-lg font-bold"
+                          style={{ color: gradeColor(c.average) }}
+                        >
+                          {c.average.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
                   ))}
-                </ul>
+                </div>
               </>
             )}
           </section>
 
-          {/* Próximos pasos */}
-          <section className="border border-[var(--card-border)] rounded-lg p-4 bg-[var(--card-bg)]">
-            <h2 className="text-sm font-semibold mb-2">Próximos pasos</h2>
-            <ul className="list-disc list-inside text-sm text-gray-300">
-              <li>
-                Mostrar ranking de tareas según los minutos de enfoque
-                acumulados.
-              </li>
-              <li>
-                Agregar gráficos de evolución por materia o curso (promedio por
-                cuatrimestre).
-              </li>
-              <li>
-                Incorporar logros según rachas, objetivos cumplidos y notas
-                alcanzadas.
-              </li>
-            </ul>
+          {/* Leyenda de colores */}
+          <section className="flex flex-wrap justify-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-[var(--success)]" />
+              <span className="text-[var(--text-muted)]">Aprobado (7+)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-[var(--warn)]" />
+              <span className="text-[var(--text-muted)]">Regular (4-6)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-[var(--danger)]" />
+              <span className="text-[var(--text-muted)]">Desaprobado (&lt;4)</span>
+            </div>
           </section>
         </>
       )}
