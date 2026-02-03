@@ -9,13 +9,24 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  RadarChart,
+  Radar,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
   XAxis,
   YAxis,
   Tooltip,
   CartesianGrid,
   Cell,
+  Legend,
 } from 'recharts';
 import { useTheme } from '@/context/ThemeContext';
+import { FaSortAmountDown, FaSortAmountUp, FaChartLine, FaChartBar } from 'react-icons/fa';
 
 type PomodoroSession = {
   id: string;
@@ -90,7 +101,6 @@ export default function PerformancePage() {
   const { theme } = useTheme();
 
   const [sessions, setSessions] = useState<PomodoroSession[]>([]);
-  const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [stats, setStats] = useState<Stats>({
     totalPomodoros: 0,
     totalMinutesFocus: 0,
@@ -102,6 +112,8 @@ export default function PerformancePage() {
   const [timeUnit, setTimeUnit] = useState<'minutes' | 'hours'>('minutes');
 
   const [courseGrades, setCourseGrades] = useState<GradeWithCourse[]>([]);
+  const [gradesSortOrder, setGradesSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [gradesView, setGradesView] = useState<'bar' | 'timeline' | 'distribution' | 'examType' | 'radar' | 'trend'>('bar');
 
   const [loadingStats, setLoadingStats] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +125,7 @@ export default function PerformancePage() {
     }
   }, [loading, user, router]);
 
-  // Cargar estadísticas desde Supabase
+  // Cargar estadísticas desde Supabase (consultas en paralelo)
   useEffect(() => {
     if (!user) return;
 
@@ -121,24 +133,36 @@ export default function PerformancePage() {
       setLoadingStats(true);
       setError(null);
 
-      // Sesiones de Pomodoro
-      const {
-        data: sessionsData,
-        error: sessionsError,
-      } = await supabaseClient
-        .from('pomodoro_sessions')
-        .select('id, user_id, started_at, ended_at, duration_minutes, task_id')
-        .eq('user_id', user.id)
-        .order('started_at', { ascending: true });
+      // Ejecutar todas las consultas en paralelo
+      const [sessionsResult, tasksResult, coursesResult, gradesResult] = await Promise.all([
+        supabaseClient
+          .from('pomodoro_sessions')
+          .select('id, user_id, started_at, ended_at, duration_minutes, task_id')
+          .eq('user_id', user.id)
+          .order('started_at', { ascending: true }),
+        supabaseClient
+          .from('tasks')
+          .select('id, completed')
+          .eq('user_id', user.id),
+        supabaseClient
+          .from('courses')
+          .select('id, name')
+          .eq('user_id', user.id),
+        supabaseClient
+          .from('course_grades')
+          .select('id, course_id, grade, exam_type, exam_date')
+          .eq('user_id', user.id),
+      ]);
 
-      if (sessionsError) {
-        console.error(sessionsError);
+      // Procesar sesiones de Pomodoro
+      if (sessionsResult.error) {
+        console.error(sessionsResult.error);
         setError('No se pudieron cargar las sesiones de Pomodoro.');
         setLoadingStats(false);
         return;
       }
 
-      const sessionsList = (sessionsData ?? []) as PomodoroSession[];
+      const sessionsList = (sessionsResult.data ?? []) as PomodoroSession[];
       setSessions(sessionsList);
 
       const totalPomodoros = sessionsList.length;
@@ -150,25 +174,15 @@ export default function PerformancePage() {
         .filter((s) => s.task_id)
         .reduce((acc, s) => acc + (s.duration_minutes || 0), 0);
 
-      // Tareas
-      const {
-        data: tasksData,
-        error: tasksError,
-      } = await supabaseClient
-        .from('tasks')
-        .select('id, completed')
-        .eq('user_id', user.id);
-
-      if (tasksError) {
-        console.error(tasksError);
+      // Procesar tareas
+      if (tasksResult.error) {
+        console.error(tasksResult.error);
         setError('No se pudieron cargar las tareas.');
         setLoadingStats(false);
         return;
       }
 
-      const tasksList = (tasksData ?? []) as TaskRow[];
-      setTasks(tasksList);
-
+      const tasksList = (tasksResult.data ?? []) as TaskRow[];
       const tasksCompleted = tasksList.filter((t) => t.completed).length;
 
       // Racha diaria
@@ -199,31 +213,21 @@ export default function PerformancePage() {
         weekStreak: streak,
       });
 
-      // Notas y materias
-      const { data: coursesData, error: coursesError } = await supabaseClient
-        .from('courses')
-        .select('id, name')
-        .eq('user_id', user.id);
-
-      if (coursesError) {
-        console.warn('Error cargando materias en rendimiento:', coursesError);
+      // Procesar materias y notas
+      if (coursesResult.error) {
+        console.warn('Error cargando materias en rendimiento:', coursesResult.error);
       }
 
-      const coursesList = (coursesData ?? []) as CourseRow[];
+      const coursesList = (coursesResult.data ?? []) as CourseRow[];
       const coursesMap = new Map(coursesList.map((c) => [c.id, c.name]));
 
-      const { data: gradesData, error: gradesError } = await supabaseClient
-        .from('course_grades')
-        .select('id, course_id, grade, exam_type, exam_date')
-        .eq('user_id', user.id);
-
-      if (gradesError) {
+      if (gradesResult.error) {
         console.warn(
           'Error cargando notas de exámenes en rendimiento:',
-          gradesError,
+          gradesResult.error,
         );
       } else {
-        const rawGrades = (gradesData ?? []) as CourseGradeRow[];
+        const rawGrades = (gradesResult.data ?? []) as CourseGradeRow[];
         const withNames: GradeWithCourse[] = rawGrades.map((g) => ({
           ...g,
           courseName: coursesMap.get(g.course_id) ?? 'Materia desconocida',
@@ -297,7 +301,47 @@ export default function PerformancePage() {
       });
     }
 
-    result.sort((a, b) => a.courseName.localeCompare(b.courseName));
+    // Ordenar según el estado
+    if (gradesSortOrder === 'desc') {
+      result.sort((a, b) => b.average - a.average);
+    } else {
+      result.sort((a, b) => a.average - b.average);
+    }
+    return result;
+  }, [courseGrades, gradesSortOrder]);
+
+  // Datos para línea temporal (evolución de notas por mes)
+  const timelineData = useMemo(() => {
+    if (!courseGrades.length) return [];
+
+    // Agrupar notas por mes
+    const monthlyData = new Map<string, { total: number; count: number; grades: number[] }>();
+
+    for (const g of courseGrades) {
+      if (!g.exam_date) continue;
+
+      const date = new Date(g.exam_date);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+      const entry = monthlyData.get(monthKey) ?? { total: 0, count: 0, grades: [] };
+      entry.total += g.grade;
+      entry.count += 1;
+      entry.grades.push(g.grade);
+      monthlyData.set(monthKey, entry);
+    }
+
+    // Convertir a array y ordenar por fecha
+    const result = Array.from(monthlyData.entries())
+      .map(([month, data]) => ({
+        month,
+        label: new Date(month + '-01').toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }),
+        promedio: Number((data.total / data.count).toFixed(2)),
+        cantidad: data.count,
+        mejor: Math.max(...data.grades),
+        peor: Math.min(...data.grades),
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
     return result;
   }, [courseGrades]);
 
@@ -321,6 +365,94 @@ export default function PerformancePage() {
     if (!courseGrades.length) return null;
     const sum = courseGrades.reduce((acc, g) => acc + g.grade, 0);
     return sum / courseGrades.length;
+  }, [courseGrades]);
+
+  // Distribución de notas por categoría
+  const distributionData = useMemo(() => {
+    if (!courseGrades.length) return [];
+
+    const categories = {
+      excelente: { name: 'Excelente (9-10)', value: 0, color: 'var(--success)' },
+      muyBien: { name: 'Muy bien (7-8)', value: 0, color: '#22c55e' },
+      aprobado: { name: 'Aprobado (6)', value: 0, color: 'var(--warn)' },
+      regular: { name: 'Regular (4-5)', value: 0, color: '#f97316' },
+      desaprobado: { name: 'Desaprobado (<4)', value: 0, color: 'var(--danger)' },
+    };
+
+    for (const g of courseGrades) {
+      if (g.grade >= 9) categories.excelente.value++;
+      else if (g.grade >= 7) categories.muyBien.value++;
+      else if (g.grade >= 6) categories.aprobado.value++;
+      else if (g.grade >= 4) categories.regular.value++;
+      else categories.desaprobado.value++;
+    }
+
+    return Object.values(categories).filter(c => c.value > 0);
+  }, [courseGrades]);
+
+  // Rendimiento por tipo de examen
+  const examTypeData = useMemo(() => {
+    if (!courseGrades.length) return [];
+
+    const typeMap = new Map<string, { total: number; count: number }>();
+
+    for (const g of courseGrades) {
+      const examType = g.exam_type || 'Sin especificar';
+      const entry = typeMap.get(examType) ?? { total: 0, count: 0 };
+      entry.total += g.grade;
+      entry.count += 1;
+      typeMap.set(examType, entry);
+    }
+
+    return Array.from(typeMap.entries())
+      .map(([name, data]) => ({
+        name,
+        promedio: Number((data.total / data.count).toFixed(2)),
+        cantidad: data.count,
+      }))
+      .sort((a, b) => b.promedio - a.promedio);
+  }, [courseGrades]);
+
+  // Datos para gráfico radar por materia
+  const radarData = useMemo(() => {
+    if (!courseAverages.length) return [];
+
+    // Normalizar a escala 0-10 para el radar
+    return courseAverages.map(c => ({
+      subject: c.courseName.length > 12 ? c.courseName.slice(0, 12) + '...' : c.courseName,
+      fullName: c.courseName,
+      promedio: c.average,
+      fullMark: 10,
+    }));
+  }, [courseAverages]);
+
+  // Tendencia acumulada (promedio acumulado a lo largo del tiempo)
+  const trendData = useMemo(() => {
+    if (!courseGrades.length) return [];
+
+    // Ordenar notas por fecha
+    const sortedGrades = [...courseGrades]
+      .filter(g => g.exam_date)
+      .sort((a, b) => (a.exam_date || '').localeCompare(b.exam_date || ''));
+
+    if (sortedGrades.length === 0) return [];
+
+    let runningSum = 0;
+    const result = sortedGrades.map((g, index) => {
+      runningSum += g.grade;
+      const avgAccum = runningSum / (index + 1);
+      return {
+        fecha: new Date(g.exam_date! + 'T00:00:00').toLocaleDateString('es-AR', {
+          day: 'numeric',
+          month: 'short',
+        }),
+        promedio: Number(avgAccum.toFixed(2)),
+        nota: g.grade,
+        materia: g.courseName,
+      };
+    });
+
+    return result;
   }, [courseGrades]);
 
   if (loading || (!user && !loading)) {
@@ -460,7 +592,7 @@ export default function PerformancePage() {
                 <p className="text-xs text-[var(--text-muted)]">Usa el Pomodoro para registrar tu tiempo de estudio</p>
               </div>
             ) : (
-              <div className="w-full h-64">
+              <div className="w-full h-64 [&_*]:outline-none">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
@@ -529,107 +661,509 @@ export default function PerformancePage() {
               </div>
             ) : (
               <>
-                {/* Resumen de materias */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                {/* Resumen rápido */}
+                <div className="grid grid-cols-3 gap-2 p-3 mb-6 rounded-xl bg-[var(--background)] border border-[var(--card-border)]">
                   {generalAverage !== null && (
-                    <div className="border border-[var(--card-border)] rounded-xl p-4 bg-[var(--background)]">
-                      <p className="text-xs text-[var(--text-muted)] mb-1">Promedio general</p>
+                    <div className="text-center">
                       <p
-                        className="text-2xl font-bold"
+                        className="text-xl font-bold"
                         style={{ color: gradeColor(generalAverage) }}
                       >
                         {generalAverage.toFixed(2)}
                       </p>
+                      <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide">Promedio</p>
                     </div>
                   )}
 
                   {bestCourse && (
-                    <div className="border border-[var(--card-border)] rounded-xl p-4 bg-[var(--background)]">
-                      <p className="text-xs text-[var(--text-muted)] mb-1">Mejor materia</p>
-                      <p className="text-sm font-medium text-[var(--foreground)] truncate">
-                        {bestCourse.courseName}
-                      </p>
+                    <div className="text-center border-x border-[var(--card-border)]">
                       <p
-                        className="text-lg font-bold"
+                        className="text-xl font-bold"
                         style={{ color: gradeColor(bestCourse.average) }}
                       >
                         {bestCourse.average.toFixed(2)}
+                      </p>
+                      <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide truncate px-1">
+                        Mejor
                       </p>
                     </div>
                   )}
 
                   {weakestCourse && (
-                    <div className="border border-[var(--card-border)] rounded-xl p-4 bg-[var(--background)]">
-                      <p className="text-xs text-[var(--text-muted)] mb-1">A reforzar</p>
-                      <p className="text-sm font-medium text-[var(--foreground)] truncate">
-                        {weakestCourse.courseName}
-                      </p>
+                    <div className="text-center">
                       <p
-                        className="text-lg font-bold"
+                        className="text-xl font-bold"
                         style={{ color: gradeColor(weakestCourse.average) }}
                       >
                         {weakestCourse.average.toFixed(2)}
+                      </p>
+                      <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide truncate px-1">
+                        A reforzar
                       </p>
                     </div>
                   )}
                 </div>
 
-                {/* Gráfico de notas */}
-                <div className="w-full h-64 mb-6">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={courseAverages}
-                      margin={{ top: 10, right: 20, bottom: 60, left: 20 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                      <XAxis
-                        dataKey="courseName"
-                        tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                        interval={0}
-                        angle={-25}
-                        textAnchor="end"
-                        dy={10}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        domain={[0, 10]}
-                        tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                        axisLine={false}
-                        tickLine={false}
-                        tickFormatter={(value) => {
-                          const num = Number(value);
-                          if (isNaN(num)) return value;
-                          return num.toFixed(0);
-                        }}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'var(--card-bg)',
-                          border: '1px solid var(--card-border)',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                        }}
-                        formatter={(value, _name, props) => {
-                          const num = Number(value);
-                          const label = props?.payload?.courseName ?? 'Materia';
-                          if (isNaN(num)) return value as string;
-                          return [`${num.toFixed(2)}`, label];
-                        }}
-                      />
-                      <Bar dataKey="average" radius={[6, 6, 0, 0]}>
-                        {courseAverages.map((c) => (
-                          <Cell
-                            key={c.courseId}
-                            fill={gradeColor(c.average)}
-                          />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                {/* Selector de vista */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <button
+                    onClick={() => setGradesView('bar')}
+                    className={`flex items-center gap-2 px-3 py-2 text-xs rounded-lg border transition-all duration-200 ${
+                      gradesView === 'bar'
+                        ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                        : 'border-[var(--card-border)] bg-[var(--background)] hover:border-[var(--primary-soft)]'
+                    }`}
+                  >
+                    <FaChartBar />
+                    Por materia
+                  </button>
+                  <button
+                    onClick={() => setGradesView('timeline')}
+                    className={`flex items-center gap-2 px-3 py-2 text-xs rounded-lg border transition-all duration-200 ${
+                      gradesView === 'timeline'
+                        ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                        : 'border-[var(--card-border)] bg-[var(--background)] hover:border-[var(--primary-soft)]'
+                    }`}
+                  >
+                    <FaChartLine />
+                    Evolución
+                  </button>
+                  <button
+                    onClick={() => setGradesView('distribution')}
+                    className={`flex items-center gap-2 px-3 py-2 text-xs rounded-lg border transition-all duration-200 ${
+                      gradesView === 'distribution'
+                        ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                        : 'border-[var(--card-border)] bg-[var(--background)] hover:border-[var(--primary-soft)]'
+                    }`}
+                  >
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
+                      <path d="M12 6v6l4 2"/>
+                    </svg>
+                    Distribución
+                  </button>
+                  <button
+                    onClick={() => setGradesView('examType')}
+                    className={`flex items-center gap-2 px-3 py-2 text-xs rounded-lg border transition-all duration-200 ${
+                      gradesView === 'examType'
+                        ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                        : 'border-[var(--card-border)] bg-[var(--background)] hover:border-[var(--primary-soft)]'
+                    }`}
+                  >
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM7 10h2v7H7zm4-3h2v10h-2zm4 6h2v4h-2z"/>
+                    </svg>
+                    Por examen
+                  </button>
+                  <button
+                    onClick={() => setGradesView('radar')}
+                    className={`flex items-center gap-2 px-3 py-2 text-xs rounded-lg border transition-all duration-200 ${
+                      gradesView === 'radar'
+                        ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                        : 'border-[var(--card-border)] bg-[var(--background)] hover:border-[var(--primary-soft)]'
+                    }`}
+                  >
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                      <polygon points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5" fill="none" stroke="currentColor" strokeWidth="2"/>
+                      <polygon points="12,6 18,9.5 18,14.5 12,18 6,14.5 6,9.5" fill="currentColor" opacity="0.3"/>
+                    </svg>
+                    Radar
+                  </button>
+                  <button
+                    onClick={() => setGradesView('trend')}
+                    className={`flex items-center gap-2 px-3 py-2 text-xs rounded-lg border transition-all duration-200 ${
+                      gradesView === 'trend'
+                        ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                        : 'border-[var(--card-border)] bg-[var(--background)] hover:border-[var(--primary-soft)]'
+                    }`}
+                  >
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 17l6-6 4 4 8-8"/>
+                      <path d="M17 7h4v4"/>
+                    </svg>
+                    Tendencia
+                  </button>
                 </div>
 
+                {/* Gráfico de barras por materia */}
+                {gradesView === 'bar' && (
+                  <div className="w-full h-64 mb-6 [&_*]:outline-none">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={courseAverages}
+                        margin={{ top: 10, right: 20, bottom: 60, left: 20 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                        <XAxis
+                          dataKey="courseName"
+                          tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                          interval={0}
+                          angle={-25}
+                          textAnchor="end"
+                          dy={10}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          domain={[0, 10]}
+                          tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(value) => {
+                            const num = Number(value);
+                            if (isNaN(num)) return value;
+                            return num.toFixed(0);
+                          }}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'var(--card-bg)',
+                            border: '1px solid var(--card-border)',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                          }}
+                          formatter={(value, _name, props) => {
+                            const num = Number(value);
+                            const label = props?.payload?.courseName ?? 'Materia';
+                            if (isNaN(num)) return value as string;
+                            return [`${num.toFixed(2)}`, label];
+                          }}
+                        />
+                        <Bar dataKey="average" radius={[6, 6, 0, 0]}>
+                          {courseAverages.map((c) => (
+                            <Cell
+                              key={c.courseId}
+                              fill={gradeColor(c.average)}
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {/* Gráfico de línea temporal */}
+                {gradesView === 'timeline' && (
+                  <div className="w-full h-64 mb-6 [&_*]:outline-none">
+                    {timelineData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={timelineData}
+                          margin={{ top: 10, right: 20, bottom: 20, left: 20 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                          <XAxis
+                            dataKey="label"
+                            tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <YAxis
+                            domain={[0, 10]}
+                            tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'var(--card-bg)',
+                              border: '1px solid var(--card-border)',
+                              borderRadius: '12px',
+                              fontSize: '12px',
+                            }}
+                            formatter={(value: number, name: string) => {
+                              const labels: Record<string, string> = {
+                                promedio: 'Promedio',
+                                mejor: 'Mejor nota',
+                                peor: 'Peor nota',
+                              };
+                              return [value.toFixed(2), labels[name] || name];
+                            }}
+                            labelFormatter={(label) => `Período: ${label}`}
+                          />
+                          <Legend
+                            formatter={(value) => {
+                              const labels: Record<string, string> = {
+                                promedio: 'Promedio',
+                                mejor: 'Mejor',
+                                peor: 'Peor',
+                              };
+                              return labels[value] || value;
+                            }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="promedio"
+                            stroke="var(--accent)"
+                            strokeWidth={2}
+                            dot={{ fill: 'var(--accent)', r: 4 }}
+                            activeDot={{ r: 6 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="mejor"
+                            stroke="var(--success)"
+                            strokeWidth={1}
+                            strokeDasharray="5 5"
+                            dot={{ fill: 'var(--success)', r: 3 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="peor"
+                            stroke="var(--danger)"
+                            strokeWidth={1}
+                            strokeDasharray="5 5"
+                            dot={{ fill: 'var(--danger)', r: 3 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
+                        No hay datos con fechas para mostrar la evolución
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Gráfico de distribución (dona) */}
+                {gradesView === 'distribution' && (
+                  <div className="w-full h-72 mb-6 [&_*]:outline-none">
+                    {distributionData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={distributionData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={100}
+                            paddingAngle={2}
+                            dataKey="value"
+                            label={({ name, percent }) => `${(name || '').toString().split(' ')[0]} ${((percent || 0) * 100).toFixed(0)}%`}
+                            labelLine={{ stroke: 'var(--text-muted)', strokeWidth: 1 }}
+                          >
+                            {distributionData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'var(--card-bg)',
+                              border: '1px solid var(--card-border)',
+                              borderRadius: '12px',
+                              fontSize: '12px',
+                            }}
+                            formatter={(value: number, _name: string, props) => {
+                              const total = distributionData.reduce((acc, d) => acc + d.value, 0);
+                              const percent = ((value / total) * 100).toFixed(1);
+                              return [`${value} notas (${percent}%)`, props.payload.name];
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
+                        No hay datos para mostrar la distribución
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Gráfico por tipo de examen */}
+                {gradesView === 'examType' && (
+                  <div className="w-full h-64 mb-6 [&_*]:outline-none">
+                    {examTypeData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={examTypeData}
+                          margin={{ top: 10, right: 20, bottom: 60, left: 20 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                          <XAxis
+                            dataKey="name"
+                            tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+                            interval={0}
+                            angle={-25}
+                            textAnchor="end"
+                            dy={10}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <YAxis
+                            domain={[0, 10]}
+                            tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'var(--card-bg)',
+                              border: '1px solid var(--card-border)',
+                              borderRadius: '12px',
+                              fontSize: '12px',
+                            }}
+                            formatter={(value: number, _name: string, props) => [
+                              `${value.toFixed(2)} (${props.payload.cantidad} exámenes)`,
+                              'Promedio'
+                            ]}
+                          />
+                          <Bar dataKey="promedio" radius={[6, 6, 0, 0]}>
+                            {examTypeData.map((entry) => (
+                              <Cell
+                                key={entry.name}
+                                fill={gradeColor(entry.promedio)}
+                              />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
+                        No hay datos para mostrar por tipo de examen
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Gráfico radar */}
+                {gradesView === 'radar' && (
+                  <div className="w-full h-72 mb-6 [&_*]:outline-none">
+                    {radarData.length >= 3 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
+                          <PolarGrid stroke="var(--card-border)" />
+                          <PolarAngleAxis
+                            dataKey="subject"
+                            tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+                          />
+                          <PolarRadiusAxis
+                            domain={[0, 10]}
+                            tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
+                            axisLine={false}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'var(--card-bg)',
+                              border: '1px solid var(--card-border)',
+                              borderRadius: '12px',
+                              fontSize: '12px',
+                            }}
+                            formatter={(value: number, _name: string, props) => [
+                              value.toFixed(2),
+                              props.payload.fullName
+                            ]}
+                          />
+                          <Radar
+                            name="Promedio"
+                            dataKey="promedio"
+                            stroke="var(--accent)"
+                            fill="var(--accent)"
+                            fillOpacity={0.3}
+                            strokeWidth={2}
+                          />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
+                        Se necesitan al menos 3 materias para el gráfico radar
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Gráfico de tendencia acumulada */}
+                {gradesView === 'trend' && (
+                  <div className="w-full h-64 mb-6 [&_*]:outline-none">
+                    {trendData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={trendData}
+                          margin={{ top: 10, right: 20, bottom: 20, left: 20 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                          <XAxis
+                            dataKey="fecha"
+                            tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <YAxis
+                            domain={[0, 10]}
+                            tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'var(--card-bg)',
+                              border: '1px solid var(--card-border)',
+                              borderRadius: '12px',
+                              fontSize: '12px',
+                            }}
+                            formatter={(value: number, name: string, props) => {
+                              if (name === 'promedio') {
+                                return [value.toFixed(2), 'Promedio acumulado'];
+                              }
+                              return [`${value} (${props.payload.materia})`, 'Nota'];
+                            }}
+                          />
+                          <Legend
+                            formatter={(value) => {
+                              const labels: Record<string, string> = {
+                                promedio: 'Promedio acumulado',
+                                nota: 'Nota individual',
+                              };
+                              return labels[value] || value;
+                            }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="promedio"
+                            stroke="var(--accent)"
+                            strokeWidth={2}
+                            dot={{ fill: 'var(--accent)', r: 3 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="nota"
+                            stroke="var(--primary-soft)"
+                            strokeWidth={1}
+                            strokeDasharray="3 3"
+                            dot={{ fill: 'var(--primary-soft)', r: 2 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
+                        No hay datos con fechas para mostrar la tendencia
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Lista de materias */}
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-[var(--text-muted)]">
+                    Promedios por materia
+                  </p>
+                  <button
+                    onClick={() => setGradesSortOrder((prev) => prev === 'desc' ? 'asc' : 'desc')}
+                    className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg border border-[var(--card-border)] bg-[var(--background)] hover:border-[var(--primary-soft)] transition-all duration-200"
+                    aria-label={`Ordenar por ${gradesSortOrder === 'desc' ? 'menor nota' : 'mayor nota'}`}
+                  >
+                    {gradesSortOrder === 'desc' ? (
+                      <>
+                        <FaSortAmountDown className="text-[var(--accent)]" />
+                        <span>Mayor a menor</span>
+                      </>
+                    ) : (
+                      <>
+                        <FaSortAmountUp className="text-[var(--accent)]" />
+                        <span>Menor a mayor</span>
+                      </>
+                    )}
+                  </button>
+                </div>
                 <div className="flex flex-col gap-2">
                   {courseAverages.map((c) => (
                     <div

@@ -14,7 +14,7 @@ type ConfirmDialogProps = {
   children?: React.ReactNode;
 };
 
-export function ConfirmDialog({
+export const ConfirmDialog = React.memo(function ConfirmDialog({
   open,
   title,
   description,
@@ -45,7 +45,7 @@ export function ConfirmDialog({
       >
         <h2 className="text-lg font-bold mb-2">{title}</h2>
 
-        {description && <div className="text-sm text-gray-400">{description}</div>}
+        {description && <div className="text-sm text-[var(--text-muted)]">{description}</div>}
 
         {children}
 
@@ -73,4 +73,4 @@ export function ConfirmDialog({
       </div>
     </div>
   );
-}
+});

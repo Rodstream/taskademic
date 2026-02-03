@@ -4,6 +4,7 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabaseClient } from '@/lib/supabaseClient';
+import { validatePassword, getPasswordStrength } from '@/lib/validation';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -14,10 +15,21 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
+  // Calcular fortaleza de contraseña
+  const passwordStrength = getPasswordStrength(password);
+  const passwordValidation = validatePassword(password);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setInfo(null);
+
+    // Validar contraseña antes de enviar
+    if (!passwordValidation.valid) {
+      setError('La contraseña debe tener: ' + passwordValidation.errors.join(', '));
+      return;
+    }
+
     setLoading(true);
 
     const { data, error } = await supabaseClient.auth.signUp({
@@ -72,7 +84,44 @@ export default function RegisterPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              minLength={8}
             />
+            {/* Indicador de fortaleza */}
+            {password && (
+              <div className="mt-2">
+                <div className="flex gap-1 mb-1">
+                  {[1, 2, 3, 4].map((level) => (
+                    <div
+                      key={level}
+                      className={`h-1 flex-1 rounded-full transition-colors ${
+                        passwordStrength >= level
+                          ? passwordStrength <= 1
+                            ? 'bg-red-500'
+                            : passwordStrength <= 2
+                            ? 'bg-orange-500'
+                            : passwordStrength <= 3
+                            ? 'bg-yellow-500'
+                            : 'bg-green-500'
+                          : 'bg-gray-200'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500">
+                  {passwordStrength <= 1 && 'Muy débil'}
+                  {passwordStrength === 2 && 'Débil'}
+                  {passwordStrength === 3 && 'Buena'}
+                  {passwordStrength >= 4 && 'Fuerte'}
+                </p>
+                {!passwordValidation.valid && (
+                  <ul className="text-xs text-red-500 mt-1 list-disc list-inside">
+                    {passwordValidation.errors.map((err, i) => (
+                      <li key={i}>{err}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </label>
 
           {error && (

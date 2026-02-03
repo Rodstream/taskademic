@@ -2,6 +2,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { supabaseClient } from '@/lib/supabaseClient';
@@ -71,6 +72,14 @@ export default function HomePage() {
     useState<PriorityFilter>('all');
 
   const [dailyFocus, setDailyFocus] = useState<DailyPoint[]>([]);
+
+  // Saludo según hora del día (debe estar antes de cualquier return condicional)
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Buenos días';
+    if (hour < 19) return 'Buenas tardes';
+    return 'Buenas noches';
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -222,10 +231,13 @@ export default function HomePage() {
             <div className="flex flex-col items-center gap-4">
               <div className="relative">
                 <div className="absolute inset-0 bg-[var(--accent)]/30 rounded-full blur-xl scale-150" />
-                <img
+                <Image
                   src="/taskademic-logo.svg"
                   alt="Logo de Taskademic"
-                  className="relative w-20 h-20 sm:w-24 sm:h-24 drop-shadow-lg"
+                  width={96}
+                  height={96}
+                  className="relative drop-shadow-lg"
+                  priority
                 />
               </div>
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[var(--card-bg)] border border-[var(--card-border)] backdrop-blur-sm">
@@ -269,10 +281,6 @@ export default function HomePage() {
 
             {/* Stats rápidos */}
             <div className="flex flex-wrap justify-center gap-8 mt-8 pt-8 border-t border-[var(--card-border)]">
-              <div className="text-center">
-                <p className="text-2xl sm:text-3xl font-bold text-[var(--accent)]">100%</p>
-                <p className="text-xs text-muted mt-1">Gratis</p>
-              </div>
               <div className="text-center">
                 <p className="text-2xl sm:text-3xl font-bold">Pomodoro</p>
                 <p className="text-xs text-muted mt-1">Integrado</p>
@@ -519,20 +527,13 @@ export default function HomePage() {
   // ================================
   // DASHBOARD CON SESIÓN
   // ================================
-  const greeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Buenos días';
-    if (hour < 19) return 'Buenas tardes';
-    return 'Buenas noches';
-  };
-
   return (
     <main className="max-w-6xl mx-auto px-4 py-8 flex flex-col gap-6">
       {/* Header con saludo */}
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-[var(--card-border)]">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold mb-1">
-            {greeting()} 👋
+            {greeting} 👋
           </h1>
           <p className="text-soft">
             Aquí tienes un resumen de tu semana académica.
@@ -658,7 +659,7 @@ export default function HomePage() {
               </Link>
             </div>
           ) : (
-            <div className="w-full h-52">
+            <div className="w-full h-52 [&_*]:outline-none">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dailyFocus}>
                   <CartesianGrid strokeDasharray="3 3" opacity={0.1} vertical={false} />

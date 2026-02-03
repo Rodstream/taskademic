@@ -85,20 +85,29 @@ export default function PomodoroPage() {
       const saved = JSON.parse(raw) as Partial<StoredState>;
 
       const savedMode = (saved.mode ?? 'focus') as Mode;
+      // Validar remainingSeconds con límites de seguridad (0 a 2 horas máx)
       const savedRemaining =
-        typeof saved.remainingSeconds === 'number'
+        typeof saved.remainingSeconds === 'number' &&
+        saved.remainingSeconds >= 0 &&
+        saved.remainingSeconds <= 7200
           ? saved.remainingSeconds
           : FOCUS_MINUTES_DEFAULT * 60;
 
       const savedRunning = !!saved.isRunning;
 
+      // Validar focusMinutes con límites de seguridad (1-120 minutos)
       const savedFocusMin =
-        typeof saved.focusMinutes === 'number'
+        typeof saved.focusMinutes === 'number' &&
+        saved.focusMinutes >= 1 &&
+        saved.focusMinutes <= 120
           ? saved.focusMinutes
           : FOCUS_MINUTES_DEFAULT;
 
+      // Validar breakMinutes con límites de seguridad (1-60 minutos)
       const savedBreakMin =
-        typeof saved.breakMinutes === 'number'
+        typeof saved.breakMinutes === 'number' &&
+        saved.breakMinutes >= 1 &&
+        saved.breakMinutes <= 60
           ? saved.breakMinutes
           : BREAK_MINUTES_DEFAULT;
 
@@ -439,6 +448,8 @@ export default function PomodoroPage() {
               }
             }}
             disabled={isRunning}
+            aria-label="Cambiar a modo enfoque"
+            aria-pressed={mode === 'focus'}
             className={`
               px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200
               ${mode === 'focus'
@@ -459,6 +470,8 @@ export default function PomodoroPage() {
               }
             }}
             disabled={isRunning}
+            aria-label="Cambiar a modo descanso"
+            aria-pressed={mode === 'break'}
             className={`
               px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200
               ${mode === 'break'
@@ -518,6 +531,7 @@ export default function PomodoroPage() {
         <div className="flex gap-3">
           <button
             onClick={handleStartPause}
+            aria-label={isRunning ? 'Pausar temporizador' : 'Iniciar temporizador'}
             className={`
               flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-sm
               ${isRunning
@@ -547,6 +561,7 @@ export default function PomodoroPage() {
 
           <button
             onClick={handleReset}
+            aria-label="Reiniciar temporizador"
             className="flex items-center gap-2 px-4 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-muted)] hover:text-[var(--foreground)] hover:border-[var(--primary-soft)] transition-all duration-200"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -557,6 +572,8 @@ export default function PomodoroPage() {
 
           <button
             onClick={() => setShowConfig(!showConfig)}
+            aria-label={showConfig ? 'Cerrar configuración' : 'Abrir configuración'}
+            aria-expanded={showConfig}
             className={`
               flex items-center gap-2 px-4 py-3 rounded-xl border transition-all duration-200
               ${showConfig

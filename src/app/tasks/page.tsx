@@ -1,11 +1,13 @@
 // src/app/tasks/page.tsx
 'use client';
 
-import { useEffect, useMemo, useState, FormEvent } from 'react';
+import { useEffect, useMemo, useState, useCallback, FormEvent, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabaseClient } from '@/lib/supabaseClient';
+import { validateTaskTitle, validateTaskDescription, validateDateFormat, sanitizeInput } from '@/lib/validation';
 import { useAuth } from '@/context/AuthContext';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 type Priority = 'low' | 'medium' | 'high';
 
@@ -45,7 +47,7 @@ type Subtask = {
   created_at: string;
 };
 
-export default function TasksPage() {
+function TasksPageContent() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -238,10 +240,32 @@ export default function TasksPage() {
 
     setError(null);
 
+    // Validar título
+    const titleValidation = validateTaskTitle(title);
+    if (!titleValidation.valid) {
+      setError(titleValidation.error ?? 'Título inválido');
+      return;
+    }
+
+    // Validar descripción
+    const descValidation = validateTaskDescription(description);
+    if (!descValidation.valid) {
+      setError(descValidation.error ?? 'Descripción inválida');
+      return;
+    }
+
+    // Validar fecha
+    const dateValidation = validateDateFormat(dueDate);
+    if (!dateValidation.valid) {
+      setError(dateValidation.error ?? 'Fecha inválida');
+      return;
+    }
+
     const courseIdToSave =
       newTaskCourseId && newTaskCourseId !== 'none' ? newTaskCourseId : null;
 
-    const tagsToSave = newTaskTags.trim().length > 0 ? newTaskTags.trim() : null;
+    // Sanitizar tags
+    const tagsToSave = newTaskTags.trim().length > 0 ? sanitizeInput(newTaskTags.trim()) : null;
 
     const { data, error } = await supabaseClient
       .from('tasks')
@@ -274,7 +298,7 @@ export default function TasksPage() {
     setShowNewTaskModal(false);
   };
 
-  const toggleCompleted = async (task: TaskWithStats) => {
+  const toggleCompleted = useCallback(async (task: TaskWithStats) => {
     const { data, error } = await supabaseClient
       .from('tasks')
       .update({ completed: !task.completed })
@@ -296,7 +320,7 @@ export default function TasksPage() {
         t.id === task.id ? { ...updated, focusMinutes: task.focusMinutes } : t,
       ),
     );
-  };
+  }, [user?.id]);
 
   // Helpers materias
   const courseMap = useMemo(
@@ -546,7 +570,7 @@ export default function TasksPage() {
   };
 
   // ---- Subtasks helpers ----
-  const ensureSubtasksLoaded = async (taskId: string) => {
+  const ensureSubtasksLoaded = useCallback(async (taskId: string) => {
     if (!user) return;
     if (subtasksByTaskId[taskId]) return;
     if (subtasksLoadingByTaskId[taskId]) return;
@@ -578,9 +602,9 @@ export default function TasksPage() {
       ...prev,
       [taskId]: { total: list.length, done },
     }));
-  };
+  }, [user, subtasksByTaskId, subtasksLoadingByTaskId]);
 
-  const toggleSubtasksPanel = async (taskId: string) => {
+  const toggleSubtasksPanel = useCallback(async (taskId: string) => {
     const wasExpanded = expandedSubtasks.has(taskId);
 
     setExpandedSubtasks((prev) => {
@@ -593,9 +617,9 @@ export default function TasksPage() {
     if (!wasExpanded) {
       await ensureSubtasksLoaded(taskId);
     }
-  };
+  }, [expandedSubtasks, ensureSubtasksLoaded]);
 
-  const addSubtask = async (taskId: string) => {
+  const addSubtask = useCallback(async (taskId: string) => {
     if (!user) return;
 
     const raw = (newSubtaskTitleByTaskId[taskId] ?? '').trim();
@@ -635,7 +659,7 @@ export default function TasksPage() {
     });
 
     setNewSubtaskTitleByTaskId((prev) => ({ ...prev, [taskId]: '' }));
-  };
+  }, [user, newSubtaskTitleByTaskId]);
 
   const toggleSubtaskCompleted = async (taskId: string, subtask: Subtask) => {
     if (!user) return;
@@ -745,6 +769,406 @@ export default function TasksPage() {
         : bDate.localeCompare(aDate);
     });
   }, [tasks, filter, filterCourseId, filterPriority, dateOrder]);
+
+  // Agrupar tareas por período de tiempo
+  const groupedTasks = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().slice(0, 10);
+
+    const endOfWeek = new Date(today);
+    endOfWeek.setDate(today.getDate() + (7 - today.getDay()));
+    const endOfWeekStr = endOfWeek.toISOString().slice(0, 10);
+
+    const groups: {
+      overdue: TaskWithStats[];
+      today: TaskWithStats[];
+      thisWeek: TaskWithStats[];
+      upcoming: TaskWithStats[];
+      noDate: TaskWithStats[];
+      completed: TaskWithStats[];
+    } = {
+      overdue: [],
+      today: [],
+      thisWeek: [],
+      upcoming: [],
+      noDate: [],
+      completed: [],
+    };
+
+    for (const task of filteredTasks) {
+      // Las completadas van a su propia sección
+      if (task.completed) {
+        groups.completed.push(task);
+      } else if (!task.due_date) {
+        groups.noDate.push(task);
+      } else if (task.due_date < todayStr) {
+        groups.overdue.push(task);
+      } else if (task.due_date === todayStr) {
+        groups.today.push(task);
+      } else if (task.due_date <= endOfWeekStr) {
+        groups.thisWeek.push(task);
+      } else {
+        groups.upcoming.push(task);
+      }
+    }
+
+    return groups;
+  }, [filteredTasks]);
+
+  // Props compartidas para TaskGroup
+  const taskGroupProps = {
+    toggleCompleted,
+    openEditTask,
+    askDeleteTask,
+    toggleSubtasksPanel,
+    getCourseLabel,
+    getPriorityLabel,
+    getPriorityClass,
+    parseTags,
+    getStatusLabel,
+    expandedSubtasks,
+    subtaskCountsByTaskId,
+    subtasksByTaskId,
+    subtasksLoadingByTaskId,
+    ensureSubtasksLoaded,
+    toggleSubtaskCompleted,
+    deleteSubtask,
+    addSubtask,
+    newSubtaskTitleByTaskId,
+    setNewSubtaskTitleByTaskId,
+  };
+
+  // Componente para renderizar una tarjeta de tarea
+  const TaskCard = ({ task }: { task: TaskWithStats }) => {
+    const status = getStatusLabel(task);
+    const course = getCourseLabel(task.course_id);
+    const priorityLabel = getPriorityLabel(task.priority);
+    const priorityClass = getPriorityClass(task.priority);
+    const tagsList = parseTags(task.tags);
+    const priority = task.priority ?? 'medium';
+
+    const isExpanded = expandedSubtasks.has(task.id);
+    const counts = subtaskCountsByTaskId[task.id] ?? { total: 0, done: 0 };
+    const subtasks = subtasksByTaskId[task.id] ?? [];
+    const subtasksLoading = !!subtasksLoadingByTaskId[task.id];
+
+    // Color del borde según prioridad
+    const borderColor = priority === 'high'
+      ? 'border-l-[var(--danger)]'
+      : priority === 'low'
+        ? 'border-l-[var(--success)]'
+        : 'border-l-[var(--warn)]';
+
+    return (
+      <div
+        className={`group relative bg-[var(--card-bg)] rounded-2xl border border-[var(--card-border)] border-l-4 ${borderColor} overflow-hidden transition-all duration-300 hover:shadow-lg hover:shadow-[var(--accent)]/5 hover:-translate-y-0.5 ${task.completed ? 'opacity-60' : ''}`}
+      >
+        <div className="p-4">
+          <div className="flex gap-4">
+            {/* Checkbox circular con animación */}
+            <button
+              type="button"
+              onClick={() => toggleCompleted(task)}
+              className={`flex-shrink-0 w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+                task.completed
+                  ? 'bg-[var(--success)] border-[var(--success)] scale-110'
+                  : 'border-[var(--card-border)] hover:border-[var(--accent)] hover:scale-110'
+              }`}
+            >
+              {task.completed && (
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
+
+            {/* Contenido */}
+            <div className="flex-1 min-w-0">
+              {/* Header con título y badges */}
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <h3 className={`font-semibold text-[var(--foreground)] leading-tight ${task.completed ? 'line-through opacity-70' : ''}`}>
+                  {task.title}
+                </h3>
+
+                {/* Anillo de progreso de subtareas */}
+                {counts.total > 0 && (
+                  <div className="flex-shrink-0 relative w-8 h-8">
+                    <svg className="w-8 h-8 -rotate-90">
+                      <circle
+                        cx="16"
+                        cy="16"
+                        r="12"
+                        fill="none"
+                        stroke="var(--card-border)"
+                        strokeWidth="3"
+                      />
+                      <circle
+                        cx="16"
+                        cy="16"
+                        r="12"
+                        fill="none"
+                        stroke="var(--success)"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeDasharray={`${(counts.done / counts.total) * 75.4} 75.4`}
+                        className="transition-all duration-500"
+                      />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-[var(--text-muted)]">
+                      {counts.done}/{counts.total}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Badges */}
+              <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${priorityClass}`}>
+                  {priorityLabel}
+                </span>
+                {course && (
+                  <span
+                    className="px-2 py-0.5 rounded-full text-[10px] font-medium"
+                    style={{
+                      backgroundColor: course.color ? `${course.color}20` : 'var(--primary-soft)/15',
+                      color: course.color || 'var(--primary-soft)',
+                    }}
+                  >
+                    {course.name}
+                  </span>
+                )}
+                {task.focusMinutes > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[var(--success)]/15 text-[var(--success)]">
+                    {task.focusMinutes} min
+                  </span>
+                )}
+              </div>
+
+              {/* Descripción */}
+              {task.description && (
+                <p className="text-sm text-[var(--text-muted)] mb-2 line-clamp-2">
+                  {task.description}
+                </p>
+              )}
+
+              {/* Tags */}
+              {tagsList.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {tagsList.map((tag, idx) => (
+                    <span
+                      key={`${task.id}-tag-${idx}`}
+                      className="px-2 py-0.5 rounded-full bg-[var(--primary-soft)]/10 text-[var(--primary-soft)] text-[10px] font-medium"
+                    >
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Footer con fecha */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
+                  {task.due_date && (
+                    <span className={`flex items-center gap-1 ${status.tone === 'danger' ? 'text-[var(--danger)] font-medium' : ''}`}>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      {new Date(task.due_date + 'T00:00:00').toLocaleDateString('es-AR', {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short'
+                      })}
+                    </span>
+                  )}
+                </div>
+
+                {/* Acciones */}
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    type="button"
+                    onClick={() => toggleSubtasksPanel(task.id)}
+                    className={`p-1.5 rounded-lg transition-all ${isExpanded ? 'bg-[var(--accent)]/15 text-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10'}`}
+                    title="Subtareas"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openEditTask(task)}
+                    className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-all"
+                    title="Editar"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => askDeleteTask(task)}
+                    className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-all"
+                    title="Eliminar"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Panel de subtareas expandible */}
+        {isExpanded && (
+          <div className="border-t border-[var(--card-border)] bg-[var(--background)]/50 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-[var(--foreground)]">Subtareas</span>
+              {counts.total > 0 && (
+                <span className="text-xs text-[var(--text-muted)]">
+                  {counts.done} de {counts.total} completadas
+                </span>
+              )}
+            </div>
+
+            {counts.total > 0 && (
+              <div className="h-1 bg-[var(--card-border)] rounded-full mb-3 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-[var(--success)] to-[var(--accent)] rounded-full transition-all duration-500"
+                  style={{ width: `${(counts.done / counts.total) * 100}%` }}
+                />
+              </div>
+            )}
+
+            {subtasksLoading && (
+              <div className="flex items-center gap-2 py-3">
+                <div className="w-4 h-4 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm text-[var(--text-muted)]">Cargando...</span>
+              </div>
+            )}
+
+            {!subtasksLoading && subtasks.length === 0 && (
+              <p className="text-sm text-[var(--text-muted)] py-2">No hay subtareas aún.</p>
+            )}
+
+            {!subtasksLoading && subtasks.length > 0 && (
+              <div className="space-y-2 mb-3">
+                {subtasks.map((s) => (
+                  <div
+                    key={s.id}
+                    className="flex items-center gap-3 p-2 rounded-xl bg-[var(--card-bg)] group/sub"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleSubtaskCompleted(task.id, s)}
+                      className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                        s.completed
+                          ? 'bg-[var(--success)] border-[var(--success)]'
+                          : 'border-[var(--card-border)] hover:border-[var(--accent)]'
+                      }`}
+                    >
+                      {s.completed && (
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                    <span className={`flex-1 text-sm ${s.completed ? 'line-through text-[var(--text-muted)]' : 'text-[var(--foreground)]'}`}>
+                      {s.title}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => deleteSubtask(task.id, s.id)}
+                      className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--danger)] opacity-0 group-hover/sub:opacity-100 transition-all"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                className="flex-1 border border-[var(--card-border)] rounded-xl px-3 py-2 bg-[var(--card-bg)] text-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                placeholder="Nueva subtarea..."
+                value={newSubtaskTitleByTaskId[task.id] ?? ''}
+                onChange={(e) =>
+                  setNewSubtaskTitleByTaskId((prev) => ({
+                    ...prev,
+                    [task.id]: e.target.value,
+                  }))
+                }
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addSubtask(task.id);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => addSubtask(task.id)}
+                className="px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--foreground)] text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                Agregar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Componente para grupo de tareas
+  const TaskGroup = ({
+    title,
+    icon,
+    count,
+    color,
+    tasks: groupTasks
+  }: {
+    title: string;
+    icon: React.ReactNode;
+    count: number;
+    color: 'danger' | 'warn' | 'accent' | 'success' | 'muted';
+    tasks: TaskWithStats[];
+    [key: string]: any;
+  }) => {
+    const colorClasses = {
+      danger: 'bg-[var(--danger)]/10 text-[var(--danger)] border-[var(--danger)]/30',
+      warn: 'bg-[var(--warn)]/10 text-[var(--warn)] border-[var(--warn)]/30',
+      accent: 'bg-[var(--accent)]/10 text-[var(--accent)] border-[var(--accent)]/30',
+      success: 'bg-[var(--success)]/10 text-[var(--success)] border-[var(--success)]/30',
+      muted: 'bg-[var(--card-bg)] text-[var(--text-muted)] border-[var(--card-border)]',
+    };
+
+    return (
+      <div>
+        {/* Header del grupo */}
+        <div className="flex items-center gap-3 mb-3">
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${colorClasses[color]}`}>
+            {icon}
+            <span className="text-sm font-semibold">{title}</span>
+          </div>
+          <span className="text-xs text-[var(--text-muted)]">{count} {count === 1 ? 'tarea' : 'tareas'}</span>
+          <div className="flex-1 h-px bg-[var(--card-border)]" />
+        </div>
+
+        {/* Grid de tareas */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {groupTasks.map((task) => (
+            <TaskCard key={task.id} task={task} />
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   if (loading || (!user && !loading)) {
     return (
@@ -920,17 +1344,8 @@ export default function TasksPage() {
           )}
         </section>
 
-        {/* Listado */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-[var(--foreground)]">
-              Tus tareas
-            </h2>
-            <span className="text-xs text-[var(--text-muted)] bg-[var(--card-bg)] px-3 py-1 rounded-full border border-[var(--card-border)]">
-              {filteredTasks.length} {filteredTasks.length === 1 ? 'tarea' : 'tareas'}
-            </span>
-          </div>
-
+        {/* Listado agrupado por tiempo */}
+        <section className="space-y-6">
           {loadingTasks && (
             <div className="flex items-center justify-center py-12">
               <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
@@ -938,286 +1353,102 @@ export default function TasksPage() {
           )}
 
           {!loadingTasks && filteredTasks.length === 0 && (
-            <div className="text-center py-12 border border-dashed border-[var(--card-border)] rounded-2xl bg-[var(--card-bg)]/50">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[var(--accent)]/10 flex items-center justify-center">
-                <svg className="w-8 h-8 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="text-center py-16 border border-dashed border-[var(--card-border)] rounded-3xl bg-gradient-to-b from-[var(--card-bg)] to-transparent">
+              <div className="w-20 h-20 mx-auto mb-6 rounded-3xl bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent)]/5 flex items-center justify-center">
+                <svg className="w-10 h-10 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                 </svg>
               </div>
-              <p className="text-[var(--text-muted)] mb-1">No hay tareas para mostrar</p>
-              <p className="text-xs text-[var(--text-muted)]">Agrega una nueva tarea o cambia los filtros</p>
+              <h3 className="text-lg font-semibold text-[var(--foreground)] mb-2">No hay tareas para mostrar</h3>
+              <p className="text-sm text-[var(--text-muted)] mb-6">Agrega una nueva tarea o cambia los filtros</p>
+              <button
+                type="button"
+                onClick={() => setShowNewTaskModal(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--accent)] text-[var(--foreground)] font-medium hover:opacity-90 transition-opacity"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Crear primera tarea
+              </button>
             </div>
           )}
 
-          <div className="flex flex-col gap-3">
-            {filteredTasks.map((task) => {
-              const status = getStatusLabel(task);
+          {!loadingTasks && filteredTasks.length > 0 && (
+            <>
+              {/* Vencidas */}
+              {groupedTasks.overdue.length > 0 && (
+                <TaskGroup
+                  title="Vencidas"
+                  icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                  count={groupedTasks.overdue.length}
+                  color="danger"
+                  tasks={groupedTasks.overdue}
+                  {...taskGroupProps}
+                />
+              )}
 
-              const statusClass =
-                status.tone === 'danger'
-                  ? 'bg-[var(--danger)]/15 text-[var(--danger)]'
-                  : status.tone === 'warn'
-                    ? 'bg-[var(--warn)]/15 text-[var(--warn)]'
-                    : status.tone === 'ok'
-                      ? 'bg-[var(--success)]/15 text-[var(--success)]'
-                      : 'bg-[var(--card-bg)] text-[var(--text-muted)]';
+              {/* Hoy */}
+              {groupedTasks.today.length > 0 && (
+                <TaskGroup
+                  title="Hoy"
+                  icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>}
+                  count={groupedTasks.today.length}
+                  color="warn"
+                  tasks={groupedTasks.today}
+                  {...taskGroupProps}
+                />
+              )}
 
-              const course = getCourseLabel(task.course_id);
-              const priorityLabel = getPriorityLabel(task.priority);
-              const priorityClass = getPriorityClass(task.priority);
-              const tagsList = parseTags(task.tags);
+              {/* Esta semana */}
+              {groupedTasks.thisWeek.length > 0 && (
+                <TaskGroup
+                  title="Esta semana"
+                  icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>}
+                  count={groupedTasks.thisWeek.length}
+                  color="accent"
+                  tasks={groupedTasks.thisWeek}
+                  {...taskGroupProps}
+                />
+              )}
 
-              const isExpanded = expandedSubtasks.has(task.id);
-              const counts = subtaskCountsByTaskId[task.id] ?? { total: 0, done: 0 };
-              const countsLabel = counts.total > 0 ? `${counts.done}/${counts.total}` : null;
+              {/* Próximamente */}
+              {groupedTasks.upcoming.length > 0 && (
+                <TaskGroup
+                  title="Próximamente"
+                  icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>}
+                  count={groupedTasks.upcoming.length}
+                  color="success"
+                  tasks={groupedTasks.upcoming}
+                  {...taskGroupProps}
+                />
+              )}
 
-              const subtasks = subtasksByTaskId[task.id] ?? [];
-              const subtasksLoading = !!subtasksLoadingByTaskId[task.id];
+              {/* Sin fecha */}
+              {groupedTasks.noDate.length > 0 && (
+                <TaskGroup
+                  title="Sin fecha"
+                  icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>}
+                  count={groupedTasks.noDate.length}
+                  color="muted"
+                  tasks={groupedTasks.noDate}
+                  {...taskGroupProps}
+                />
+              )}
 
-              return (
-                <div
-                  key={task.id}
-                  className={`group border border-[var(--card-border)] rounded-2xl p-4 bg-[var(--card-bg)] hover:border-[var(--primary-soft)]/30 transition-all duration-200 ${task.completed ? 'opacity-70' : ''}`}
-                >
-                  <div className="flex gap-4">
-                    {/* Checkbox personalizado */}
-                    <button
-                      type="button"
-                      onClick={() => toggleCompleted(task)}
-                      className={`flex-shrink-0 w-6 h-6 mt-0.5 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${
-                        task.completed
-                          ? 'bg-[var(--success)] border-[var(--success)]'
-                          : 'border-[var(--card-border)] hover:border-[var(--accent)]'
-                      }`}
-                    >
-                      {task.completed && (
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </button>
-
-                    {/* Contenido principal */}
-                    <div className="flex-1 min-w-0">
-                      {/* Título y badges */}
-                      <div className="flex flex-wrap items-start gap-2 mb-2">
-                        <h3 className={`font-medium text-[var(--foreground)] ${task.completed ? 'line-through' : ''}`}>
-                          {task.title}
-                        </h3>
-                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-medium ${statusClass}`}>
-                          {status.label}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-medium ${priorityClass}`}>
-                          {priorityLabel}
-                        </span>
-                        {course && (
-                          <span
-                            className="px-2 py-0.5 rounded-lg text-[10px] font-medium"
-                            style={{
-                              backgroundColor: course.color ? `${course.color}25` : 'var(--card-bg)',
-                              color: course.color || 'var(--text-soft)',
-                            }}
-                          >
-                            {course.name}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Descripción */}
-                      {task.description && (
-                        <p className="text-sm text-[var(--text-muted)] mb-2">
-                          {task.description}
-                        </p>
-                      )}
-
-                      {/* Tags */}
-                      {tagsList.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mb-2">
-                          {tagsList.map((tag, idx) => (
-                            <span
-                              key={`${task.id}-tag-${idx}`}
-                              className="px-2 py-0.5 rounded-lg bg-[var(--primary-soft)]/15 text-[var(--primary-soft)] text-[10px]"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Info adicional */}
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--text-muted)]">
-                        {task.due_date && (
-                          <span className="flex items-center gap-1">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            {new Date(task.due_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
-                          </span>
-                        )}
-                        {task.focusMinutes > 0 && (
-                          <span className="flex items-center gap-1 text-[var(--success)]">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            {task.focusMinutes} min
-                          </span>
-                        )}
-                        {countsLabel && (
-                          <span className="flex items-center gap-1">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                            </svg>
-                            {countsLabel}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Acciones */}
-                    <div className="flex-shrink-0 flex items-start gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        type="button"
-                        onClick={() => toggleSubtasksPanel(task.id)}
-                        className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-all"
-                        title="Subtareas"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openEditTask(task)}
-                        className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-all"
-                        title="Editar"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => askDeleteTask(task)}
-                        className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-all"
-                        title="Eliminar"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Panel subtareas expandible */}
-                  {isExpanded && (
-                    <div className="mt-4 pt-4 border-t border-[var(--card-border)]">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-[var(--foreground)]">Subtareas</span>
-                          {counts.total > 0 && (
-                            <span className="text-xs text-[var(--text-muted)]">
-                              {counts.done}/{counts.total} completadas
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => ensureSubtasksLoaded(task.id)}
-                          className="text-xs text-[var(--accent)] hover:underline"
-                        >
-                          Recargar
-                        </button>
-                      </div>
-
-                      {/* Progress bar */}
-                      {counts.total > 0 && (
-                        <div className="h-1.5 bg-[var(--card-border)] rounded-full mb-3 overflow-hidden">
-                          <div
-                            className="h-full bg-[var(--success)] rounded-full transition-all duration-300"
-                            style={{ width: `${(counts.done / counts.total) * 100}%` }}
-                          />
-                        </div>
-                      )}
-
-                      {subtasksLoading && (
-                        <div className="flex items-center gap-2 py-2">
-                          <div className="w-4 h-4 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-                          <span className="text-sm text-[var(--text-muted)]">Cargando...</span>
-                        </div>
-                      )}
-
-                      {!subtasksLoading && subtasks.length === 0 && (
-                        <p className="text-sm text-[var(--text-muted)] py-2">
-                          No hay subtareas. Agrega la primera.
-                        </p>
-                      )}
-
-                      {!subtasksLoading && subtasks.length > 0 && (
-                        <div className="flex flex-col gap-2 mb-3">
-                          {subtasks.map((s) => (
-                            <div
-                              key={s.id}
-                              className="flex items-center justify-between gap-2 p-2 rounded-lg bg-[var(--background)] group/subtask"
-                            >
-                              <label className="flex items-center gap-2 flex-1 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={s.completed}
-                                  onChange={() => toggleSubtaskCompleted(task.id, s)}
-                                  className="w-4 h-4 rounded accent-[var(--success)]"
-                                />
-                                <span className={`text-sm ${s.completed ? 'line-through text-[var(--text-muted)]' : 'text-[var(--foreground)]'}`}>
-                                  {s.title}
-                                </span>
-                              </label>
-                              <button
-                                type="button"
-                                onClick={() => deleteSubtask(task.id, s.id)}
-                                className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--danger)] opacity-0 group-hover/subtask:opacity-100 transition-all"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Agregar subtarea */}
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          className="flex-1 border border-[var(--card-border)] rounded-xl px-3 py-2 bg-[var(--background)] text-sm text-[var(--foreground)] placeholder:text-[var(--text-muted)]"
-                          placeholder="Nueva subtarea..."
-                          value={newSubtaskTitleByTaskId[task.id] ?? ''}
-                          onChange={(e) =>
-                            setNewSubtaskTitleByTaskId((prev) => ({
-                              ...prev,
-                              [task.id]: e.target.value,
-                            }))
-                          }
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              addSubtask(task.id);
-                            }
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => addSubtask(task.id)}
-                          className="px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--foreground)] text-sm font-medium hover:opacity-90 transition-opacity"
-                        >
-                          Agregar
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+              {/* Completadas */}
+              {groupedTasks.completed.length > 0 && (
+                <TaskGroup
+                  title="Completadas"
+                  icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                  count={groupedTasks.completed.length}
+                  color="success"
+                  tasks={groupedTasks.completed}
+                  {...taskGroupProps}
+                />
+              )}
+            </>
+          )}
         </section>
       </main>
 
@@ -1488,5 +1719,13 @@ export default function TasksPage() {
         </div>
       )}
     </>
+  );
+}
+
+export default function TasksPage() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <TasksPageContent />
+    </Suspense>
   );
 }

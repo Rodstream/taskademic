@@ -26,7 +26,8 @@ export default function LoginPage() {
     setLoading(false);
 
     if (error) {
-      setError(error.message);
+      // Mensaje genérico para no revelar si el email existe o no
+      setError('Credenciales inválidas. Verifique su email y contraseña.');
       return;
     }
 

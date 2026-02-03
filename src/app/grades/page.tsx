@@ -15,6 +15,8 @@ import {
   FaCalendarAlt,
   FaTrophy,
   FaChartLine,
+  FaHistory,
+  FaLayerGroup,
 } from 'react-icons/fa';
 
 type Course = {
@@ -92,6 +94,9 @@ export default function GradesPage() {
 
   // Filtro de materia
   const [filterCourseId, setFilterCourseId] = useState<string>('all');
+
+  // Vista: 'grouped' (por materia) o 'history' (cronológico)
+  const [viewMode, setViewMode] = useState<'grouped' | 'history'>('grouped');
 
   // Confirmación de eliminación
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -399,9 +404,39 @@ export default function GradesPage() {
         {/* Filtro y listado */}
         {hasCourses && (
           <>
-            {/* Filtro por materia */}
-            <div className="flex items-center justify-between gap-4">
-              <h2 className="font-semibold">Notas registradas</h2>
+            {/* Controles: Vista + Filtro */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold mr-2">Notas registradas</h2>
+                {/* Toggle de vista */}
+                <div className="flex rounded-xl border border-[var(--card-border)] overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('grouped')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                      viewMode === 'grouped'
+                        ? 'bg-[var(--accent)] text-[var(--foreground)]'
+                        : 'bg-[var(--card-bg)] text-muted hover:text-[var(--foreground)]'
+                    }`}
+                  >
+                    <FaLayerGroup className="text-[10px]" />
+                    Por materia
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('history')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                      viewMode === 'history'
+                        ? 'bg-[var(--accent)] text-[var(--foreground)]'
+                        : 'bg-[var(--card-bg)] text-muted hover:text-[var(--foreground)]'
+                    }`}
+                  >
+                    <FaHistory className="text-[10px]" />
+                    Historial
+                  </button>
+                </div>
+              </div>
+              {/* Filtro por materia */}
               <select
                 value={filterCourseId}
                 onChange={(e) => setFilterCourseId(e.target.value)}
@@ -431,100 +466,179 @@ export default function GradesPage() {
                   Usa el botón &quot;Nueva nota&quot; para cargar tu primera calificación
                 </p>
               </div>
-            ) : groupedGrades.size === 0 ? (
-              <p className="text-sm text-muted text-center py-8">
-                No hay notas para la materia seleccionada.
-              </p>
-            ) : (
-              <div className="flex flex-col gap-4">
-                {Array.from(groupedGrades.entries()).map(([courseIdKey, list]) => {
-                  const courseName = list[0]?.courseName ?? 'Materia';
-                  const avg = list.reduce((acc, g) => acc + g.grade, 0) / list.length;
+            ) : viewMode === 'grouped' ? (
+              // Vista agrupada por materia
+              groupedGrades.size === 0 ? (
+                <p className="text-sm text-muted text-center py-8">
+                  No hay notas para la materia seleccionada.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {Array.from(groupedGrades.entries()).map(([courseIdKey, list]) => {
+                    const courseName = list[0]?.courseName ?? 'Materia';
+                    const avg = list.reduce((acc, g) => acc + g.grade, 0) / list.length;
 
-                  return (
-                    <article
-                      key={courseIdKey}
-                      className="border border-[var(--card-border)] rounded-2xl bg-[var(--card-bg)] overflow-hidden"
-                    >
-                      {/* Header de materia */}
-                      <div className="flex items-center justify-between p-4 border-b border-[var(--card-border)] bg-[var(--card-bg)]">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/10 flex items-center justify-center">
-                            <FaBook className="text-[var(--accent)]" />
+                    return (
+                      <article
+                        key={courseIdKey}
+                        className="border border-[var(--card-border)] rounded-2xl bg-[var(--card-bg)] overflow-hidden"
+                      >
+                        {/* Header de materia */}
+                        <div className="flex items-center justify-between p-4 border-b border-[var(--card-border)] bg-[var(--card-bg)]">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/10 flex items-center justify-center">
+                              <FaBook className="text-[var(--accent)]" />
+                            </div>
+                            <div>
+                              <h3 className="font-semibold">{courseName}</h3>
+                              <p className="text-xs text-muted">{list.length} {list.length === 1 ? 'nota' : 'notas'}</p>
+                            </div>
                           </div>
-                          <div>
-                            <h3 className="font-semibold">{courseName}</h3>
-                            <p className="text-xs text-muted">{list.length} {list.length === 1 ? 'nota' : 'notas'}</p>
+                          <div className="text-right">
+                            <p className="text-xs text-muted">Promedio</p>
+                            <p className={`text-xl font-bold ${gradeColor(avg)}`}>
+                              {avg.toFixed(2)}
+                            </p>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-xs text-muted">Promedio</p>
-                          <p className={`text-xl font-bold ${gradeColor(avg)}`}>
-                            {avg.toFixed(2)}
-                          </p>
-                        </div>
-                      </div>
 
-                      {/* Lista de notas */}
-                      <div className="divide-y divide-[var(--card-border)]">
-                        {list.map((g) => {
-                          const dateLabel = g.exam_date
-                            ? new Date(g.exam_date + 'T00:00:00').toLocaleDateString('es-AR', {
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric',
-                              })
-                            : null;
+                        {/* Lista de notas */}
+                        <div className="divide-y divide-[var(--card-border)]">
+                          {list.map((g) => {
+                            const dateLabel = g.exam_date
+                              ? new Date(g.exam_date + 'T00:00:00').toLocaleDateString('es-AR', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric',
+                                })
+                              : null;
 
-                          return (
-                            <div
-                              key={g.id}
-                              className="flex items-center justify-between p-4 hover:bg-[var(--card-bg)]/50 transition-colors group"
-                            >
-                              <div className="flex items-center gap-4">
-                                <span
-                                  className={`w-14 h-14 rounded-xl flex items-center justify-center text-lg font-bold border ${gradeBadgeClasses(g.grade)}`}
-                                >
-                                  {g.grade.toFixed(1)}
-                                </span>
-                                <div>
-                                  <p className="font-medium">
-                                    {g.exam_type || 'Examen'}
-                                  </p>
-                                  <div className="flex items-center gap-3 text-xs text-muted">
-                                    <span className={gradeColor(g.grade)}>
-                                      {gradeStatusLabel(g.grade)}
-                                    </span>
-                                    {dateLabel && (
-                                      <>
-                                        <span>•</span>
-                                        <span className="flex items-center gap-1">
-                                          <FaCalendarAlt className="text-[10px]" />
-                                          {dateLabel}
-                                        </span>
-                                      </>
-                                    )}
+                            return (
+                              <div
+                                key={g.id}
+                                className="flex items-center justify-between p-4 hover:bg-[var(--card-bg)]/50 transition-colors group"
+                              >
+                                <div className="flex items-center gap-4">
+                                  <span
+                                    className={`w-14 h-14 rounded-xl flex items-center justify-center text-lg font-bold border ${gradeBadgeClasses(g.grade)}`}
+                                  >
+                                    {g.grade.toFixed(1)}
+                                  </span>
+                                  <div>
+                                    <p className="font-medium">
+                                      {g.exam_type || 'Examen'}
+                                    </p>
+                                    <div className="flex items-center gap-3 text-xs text-muted">
+                                      <span className={gradeColor(g.grade)}>
+                                        {gradeStatusLabel(g.grade)}
+                                      </span>
+                                      {dateLabel && (
+                                        <>
+                                          <span>•</span>
+                                          <span className="flex items-center gap-1">
+                                            <FaCalendarAlt className="text-[10px]" />
+                                            {dateLabel}
+                                          </span>
+                                        </>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
 
-                              <button
-                                type="button"
-                                onClick={() => handleAskDelete(g.id)}
-                                disabled={deleteLoadingId === g.id}
-                                className="p-2 rounded-lg text-muted hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
-                                title="Eliminar"
-                              >
-                                <FaTrash className="text-sm" />
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </article>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAskDelete(g.id)}
+                                  disabled={deleteLoadingId === g.id}
+                                  className="p-2 rounded-lg text-muted hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
+                                  title="Eliminar"
+                                >
+                                  <FaTrash className="text-sm" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )
+            ) : (
+              // Vista historial cronológico
+              (() => {
+                // Filtrar por materia si es necesario
+                const filteredGrades = filterCourseId === 'all'
+                  ? grades
+                  : grades.filter((g) => g.course_id === filterCourseId);
+
+                if (filteredGrades.length === 0) {
+                  return (
+                    <p className="text-sm text-muted text-center py-8">
+                      No hay notas para la materia seleccionada.
+                    </p>
                   );
-                })}
-              </div>
+                }
+
+                return (
+                  <div className="border border-[var(--card-border)] rounded-2xl bg-[var(--card-bg)] overflow-hidden">
+                    <div className="divide-y divide-[var(--card-border)]">
+                      {filteredGrades.map((g) => {
+                        const dateLabel = g.exam_date
+                          ? new Date(g.exam_date + 'T00:00:00').toLocaleDateString('es-AR', {
+                              weekday: 'short',
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })
+                          : 'Sin fecha';
+
+                        return (
+                          <div
+                            key={g.id}
+                            className="flex items-center justify-between p-4 hover:bg-[var(--card-bg)]/50 transition-colors group"
+                          >
+                            <div className="flex items-center gap-4">
+                              <span
+                                className={`w-12 h-12 rounded-xl flex items-center justify-center text-base font-bold border ${gradeBadgeClasses(g.grade)}`}
+                              >
+                                {g.grade.toFixed(1)}
+                              </span>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium">{g.courseName}</p>
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--card-border)] text-muted">
+                                    {g.exam_type || 'Examen'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-3 text-xs text-muted mt-0.5">
+                                  <span className={gradeColor(g.grade)}>
+                                    {gradeStatusLabel(g.grade)}
+                                  </span>
+                                  <span>•</span>
+                                  <span className="flex items-center gap-1">
+                                    <FaCalendarAlt className="text-[10px]" />
+                                    {dateLabel}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleAskDelete(g.id)}
+                              disabled={deleteLoadingId === g.id}
+                              className="p-2 rounded-lg text-muted hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
+                              title="Eliminar"
+                            >
+                              <FaTrash className="text-sm" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()
             )}
           </>
         )}

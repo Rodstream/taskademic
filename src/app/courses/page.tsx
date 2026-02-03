@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { supabaseClient } from '@/lib/supabaseClient';
+import { validateCourseName, validateColor } from '@/lib/validation';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 type Course = {
@@ -63,8 +64,18 @@ export default function CoursesPage() {
   const handleAddCourse = async (e: FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    if (!name.trim()) {
-      setError('El nombre de la materia es obligatorio.');
+
+    // Validar nombre
+    const nameValidation = validateCourseName(name);
+    if (!nameValidation.valid) {
+      setError(nameValidation.error ?? 'Nombre inválido');
+      return;
+    }
+
+    // Validar color
+    const colorValidation = validateColor(color);
+    if (!colorValidation.valid) {
+      setError(colorValidation.error ?? 'Color inválido');
       return;
     }
 

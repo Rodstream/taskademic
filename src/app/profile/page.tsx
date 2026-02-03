@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { supabaseClient } from '@/lib/supabaseClient';
+import { validateAvatarUrl, validateFullName, validatePassword } from '@/lib/validation';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 type Profile = {
@@ -99,9 +100,24 @@ export default function ProfilePage() {
   const handleSaveProfile = async () => {
     if (!user) return;
 
-    setSavingProfile(true);
     setErrorProfile(null);
     setInfoProfile(null);
+
+    // Validar nombre completo
+    const nameValidation = validateFullName(fullName);
+    if (!nameValidation.valid) {
+      setErrorProfile(nameValidation.error ?? 'Nombre inválido');
+      return;
+    }
+
+    // Validar URL de avatar
+    const avatarValidation = validateAvatarUrl(avatarUrl);
+    if (!avatarValidation.valid) {
+      setErrorProfile(avatarValidation.error ?? 'URL de avatar inválida');
+      return;
+    }
+
+    setSavingProfile(true);
 
     const { error } = await supabaseClient.from('profiles').upsert({
       id: user.id,
@@ -132,8 +148,10 @@ export default function ProfilePage() {
       return;
     }
 
-    if (newPassword1.length < 6) {
-      setErrorSecurity('La nueva contraseña debe tener al menos 6 caracteres.');
+    // Validar fortaleza de la nueva contraseña
+    const passwordValidation = validatePassword(newPassword1);
+    if (!passwordValidation.valid) {
+      setErrorSecurity('La nueva contraseña debe tener: ' + passwordValidation.errors.join(', '));
       return;
     }
 
@@ -151,7 +169,8 @@ export default function ProfilePage() {
 
     if (loginError) {
       setChangingPassword(false);
-      setErrorSecurity('La contraseña actual es incorrecta.');
+      // Mensaje genérico para no revelar información
+      setErrorSecurity('No se pudo verificar la contraseña actual.');
       return;
     }
 

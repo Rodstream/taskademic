@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { supabaseClient } from '@/lib/supabaseClient';
@@ -98,17 +99,21 @@ export function Sidebar() {
             title={collapsed ? 'Taskademic' : undefined}
           >
             {collapsed ? (
-              <img
+              <Image
                 src="/taskademic-logo.svg"
                 alt="Taskademic logo"
-                className="w-8 h-8"
+                width={32}
+                height={32}
+                priority
               />
             ) : (
               <>
-                <img
+                <Image
                   src="/taskademic-logo.svg"
                   alt="Taskademic logo"
-                  className="w-7 h-7"
+                  width={28}
+                  height={28}
+                  priority
                 />
                 <span className="text-lg font-bold">Taskademic</span>
               </>
@@ -180,6 +185,8 @@ export function Sidebar() {
             onClick={toggleTheme}
             className="w-full px-3 py-2 border border-[var(--card-border)] rounded-md hover:bg-white/5 flex items-center justify-between"
             title={collapsed ? 'Modo oscuro' : undefined}
+            aria-label={`Cambiar a modo ${theme === 'dark' ? 'claro' : 'oscuro'}`}
+            aria-pressed={theme === 'dark'}
           >
             <div className="flex items-center gap-3">
               <FaMoon />
