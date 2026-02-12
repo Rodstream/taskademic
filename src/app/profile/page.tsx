@@ -76,7 +76,7 @@ export default function ProfilePage() {
     const loadProfile = async () => {
       const { data, error } = await supabaseClient
         .from('profiles')
-        .select('*')
+        .select('id, full_name, avatar_url, career, university, academic_year')
         .eq('id', user.id)
         .maybeSingle();
 

@@ -1,7 +1,7 @@
 // src/app/pomodoro/page.tsx
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { supabaseClient } from '@/lib/supabaseClient';
@@ -64,6 +64,52 @@ export default function PomodoroPage() {
 
   const [hydrated, setHydrated] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+
+  const remainingSecondsRef = useRef(remainingSeconds);
+  const lastTickAtRef = useRef<number | null>(null);
+  const stateRef = useRef<StoredState | null>(null);
+
+  useEffect(() => {
+    remainingSecondsRef.current = remainingSeconds;
+  }, [remainingSeconds]);
+
+  useEffect(() => {
+    lastTickAtRef.current = lastTickAt;
+  }, [lastTickAt]);
+
+  useEffect(() => {
+    stateRef.current = {
+      mode,
+      remainingSeconds,
+      isRunning,
+      focusMinutes,
+      breakMinutes,
+      focusInput,
+      breakInput,
+      cycleStart,
+      selectedTaskId,
+      lastTickAt,
+    };
+  }, [
+    mode,
+    remainingSeconds,
+    isRunning,
+    focusMinutes,
+    breakMinutes,
+    focusInput,
+    breakInput,
+    cycleStart,
+    selectedTaskId,
+    lastTickAt,
+  ]);
+
+  const persistState = useCallback(() => {
+    if (!user) return;
+    if (!hydrated) return;
+    if (!stateRef.current) return;
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stateRef.current));
+  }, [user, hydrated]);
 
   // Proteger ruta
   useEffect(() => {
@@ -145,7 +191,9 @@ export default function PomodoroPage() {
       setBreakInput(savedBreakInput);
       setCycleStart(savedCycleStart);
       setSelectedTaskId(savedSelected);
-      setLastTickAt(savedRunning ? Date.now() : null);
+      const nextTickAt = savedRunning ? Date.now() : null;
+      setLastTickAt(nextTickAt);
+      lastTickAtRef.current = nextTickAt;
     } catch {
       // storage corrupto, usar defaults
     } finally {
@@ -153,31 +201,19 @@ export default function PomodoroPage() {
     }
   }, [user]);
 
-  // Persistir a localStorage
+  // Persistir cuando no corre (cambios puntuales)
   useEffect(() => {
     if (!user) return;
     if (!hydrated) return;
+    if (isRunning) return;
 
-    const toSave: StoredState = {
-      mode,
-      remainingSeconds,
-      isRunning,
-      focusMinutes,
-      breakMinutes,
-      focusInput,
-      breakInput,
-      cycleStart,
-      selectedTaskId,
-      lastTickAt,
-    };
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    persistState();
   }, [
     user,
     hydrated,
+    isRunning,
     mode,
     remainingSeconds,
-    isRunning,
     focusMinutes,
     breakMinutes,
     focusInput,
@@ -185,7 +221,61 @@ export default function PomodoroPage() {
     cycleStart,
     selectedTaskId,
     lastTickAt,
+    persistState,
   ]);
+
+  // Persistir con throttle mientras corre
+  useEffect(() => {
+    if (!user) return;
+    if (!hydrated) return;
+    if (!isRunning) return;
+
+    persistState();
+    const interval = setInterval(() => {
+      persistState();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [user, hydrated, isRunning, persistState]);
+
+  // Persistir al cerrar o al ocultar la pestana + corregir desfase al volver
+  useEffect(() => {
+    if (!user) return;
+    if (!hydrated) return;
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        persistState();
+        return;
+      }
+
+      if (document.visibilityState === 'visible' && isRunning) {
+        const now = Date.now();
+        const prev = lastTickAtRef.current;
+
+        if (typeof prev === 'number') {
+          const elapsed = Math.floor((now - prev) / 1000);
+          if (elapsed > 0) {
+            lastTickAtRef.current = now;
+            setLastTickAt(now);
+            setRemainingSeconds((curr) => Math.max(0, curr - elapsed));
+          }
+        }
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      persistState();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [user, hydrated, isRunning, persistState]);
 
   // Cargar tareas pendientes
   useEffect(() => {
@@ -197,6 +287,7 @@ export default function PomodoroPage() {
       const { data, error } = await supabaseClient
         .from('tasks')
         .select('id, title, completed, due_date')
+        .eq('user_id', user.id)
         .eq('completed', false)
         .order('due_date', { ascending: true });
 
@@ -219,17 +310,31 @@ export default function PomodoroPage() {
   useEffect(() => {
     if (!isRunning) return;
     if (!user) return;
-    if (remainingSeconds <= 0) return;
+    if (remainingSecondsRef.current <= 0) return;
 
-    if (!lastTickAt) setLastTickAt(Date.now());
+    if (!lastTickAtRef.current) {
+      const now = Date.now();
+      lastTickAtRef.current = now;
+      setLastTickAt(now);
+    }
 
     const interval = setInterval(() => {
-      setRemainingSeconds((prev) => Math.max(0, prev - 1));
-      setLastTickAt(Date.now());
+      if (remainingSecondsRef.current <= 0) {
+        clearInterval(interval);
+        return;
+      }
+
+      const now = Date.now();
+      const prevTick = lastTickAtRef.current ?? now;
+      const deltaSec = Math.max(1, Math.floor((now - prevTick) / 1000));
+
+      lastTickAtRef.current = now;
+      setLastTickAt(now);
+      setRemainingSeconds((prev) => Math.max(0, prev - deltaSec));
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isRunning, user, remainingSeconds, lastTickAt]);
+  }, [isRunning, user]);
 
   // Fin de fase
   useEffect(() => {
@@ -266,11 +371,14 @@ export default function PomodoroPage() {
       const next = !prev;
 
       if (next) {
-        setLastTickAt(Date.now());
+        const now = Date.now();
+        lastTickAtRef.current = now;
+        setLastTickAt(now);
         if (mode === 'focus' && cycleStart === null) {
-          setCycleStart(Date.now());
+          setCycleStart(now);
         }
       } else {
+        lastTickAtRef.current = null;
         setLastTickAt(null);
       }
 
@@ -325,6 +433,7 @@ export default function PomodoroPage() {
     setRemainingSeconds(initialSeconds);
     setIsRunning(false);
     setCycleStart(null);
+    lastTickAtRef.current = null;
     setLastTickAt(null);
   };
 
@@ -340,6 +449,7 @@ export default function PomodoroPage() {
 
     setIsRunning(false);
     setCycleStart(null);
+    lastTickAtRef.current = null;
     setLastTickAt(null);
     setError(null);
     setShowConfig(false);
@@ -387,11 +497,14 @@ export default function PomodoroPage() {
     setRemainingSeconds(nextSeconds);
 
     if (isRunning) {
-      setLastTickAt(Date.now());
-      if (nextMode === 'focus') setCycleStart(Date.now());
+      const now = Date.now();
+      lastTickAtRef.current = now;
+      setLastTickAt(now);
+      if (nextMode === 'focus') setCycleStart(now);
       else setCycleStart(null);
     } else {
       setCycleStart(null);
+      lastTickAtRef.current = null;
       setLastTickAt(null);
     }
   };

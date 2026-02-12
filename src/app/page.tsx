@@ -55,6 +55,30 @@ type DailyPoint = {
   minutes: number;
 };
 
+const PRIORITY_CONFIG = {
+  high: {
+    label: 'Alta',
+    bg: 'bg-[var(--danger)]/10',
+    text: 'text-[var(--danger)]',
+    border: 'border-[var(--danger)]/30',
+    icon: <FaExclamationTriangle className="text-[10px]" />,
+  },
+  medium: {
+    label: 'Media',
+    bg: 'bg-[var(--warn)]/10',
+    text: 'text-[var(--warn)]',
+    border: 'border-[var(--warn)]/30',
+    icon: null,
+  },
+  low: {
+    label: 'Baja',
+    bg: 'bg-[var(--success)]/10',
+    text: 'text-[var(--success)]',
+    border: 'border-[var(--success)]/30',
+    icon: null,
+  },
+} as const;
+
 export default function HomePage() {
   const { user, loading } = useAuth();
   const { theme } = useTheme();
@@ -92,15 +116,34 @@ export default function HomePage() {
       setError(null);
 
       try {
-        // ---- TAREAS ----
-        const { data: tasksData, error: tasksError } = await supabaseClient
+        const since = new Date();
+        since.setDate(since.getDate() - 6);
+        const sinceStr = since.toISOString();
+
+        const tasksPromise = supabaseClient
           .from('tasks')
           .select('id, title, due_date, completed, priority')
           .eq('user_id', user.id);
 
+        const sessionsPromise = supabaseClient
+          .from('pomodoro_sessions')
+          .select('id, user_id, started_at, duration_minutes')
+          .eq('user_id', user.id)
+          .gte('started_at', sinceStr);
+
+        const [
+          { data: tasksData, error: tasksError },
+          { data: sessionsData, error: sessionsError },
+        ] = await Promise.all([tasksPromise, sessionsPromise]);
+
         if (tasksError) {
           console.error(tasksError);
           throw new Error('No se pudieron cargar las tareas.');
+        }
+
+        if (sessionsError) {
+          console.error(sessionsError);
+          throw new Error('No se pudieron cargar las sesiones de Pomodoro.');
         }
 
         const tasksList = (tasksData ?? []) as TaskSummary[];
@@ -123,22 +166,6 @@ export default function HomePage() {
         setOverdueCount(overdue.length);
         setUpcomingTasksBase(upcomingSorted);
 
-        // ---- POMODORO ÚLTIMOS 7 DÍAS ----
-        const since = new Date();
-        since.setDate(since.getDate() - 6);
-        const sinceStr = since.toISOString();
-
-        const { data: sessionsData, error: sessionsError } = await supabaseClient
-          .from('pomodoro_sessions')
-          .select('id, user_id, started_at, duration_minutes')
-          .eq('user_id', user.id)
-          .gte('started_at', sinceStr);
-
-        if (sessionsError) {
-          console.error(sessionsError);
-          throw new Error('No se pudieron cargar las sesiones de Pomodoro.');
-        }
-
         const sessionsList = (sessionsData ?? []) as PomodoroSession[];
 
         const totalMinutesLast7 = sessionsList.reduce(
@@ -146,6 +173,13 @@ export default function HomePage() {
           0,
         );
         setFocusLast7(totalMinutesLast7);
+
+        const sessionsByDate = new Map<string, number>();
+        for (const s of sessionsList) {
+          const key = s.started_at.slice(0, 10);
+          const minutes = s.duration_minutes || 0;
+          sessionsByDate.set(key, (sessionsByDate.get(key) ?? 0) + minutes);
+        }
 
         const today = new Date();
         const points: DailyPoint[] = [];
@@ -160,9 +194,7 @@ export default function HomePage() {
             day: 'numeric',
           });
 
-          const minutes = sessionsList
-            .filter((s) => s.started_at.slice(0, 10) === key)
-            .reduce((acc, s) => acc + (s.duration_minutes || 0), 0);
+          const minutes = sessionsByDate.get(key) ?? 0;
 
           points.push({ date: key, label, minutes });
         }
@@ -203,6 +235,7 @@ export default function HomePage() {
   // claro -> lila (primary-soft), oscuro -> naranja (accent)
   const barFill =
     theme === 'dark' ? 'var(--accent)' : 'var(--primary-soft)';
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   if (loading) {
     return (
@@ -805,32 +838,8 @@ export default function HomePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {upcomingTasks.map((t) => {
               const p = t.priority ?? 'medium';
-              const priorityConfig = {
-                high: {
-                  label: 'Alta',
-                  bg: 'bg-[var(--danger)]/10',
-                  text: 'text-[var(--danger)]',
-                  border: 'border-[var(--danger)]/30',
-                  icon: <FaExclamationTriangle className="text-[10px]" />,
-                },
-                medium: {
-                  label: 'Media',
-                  bg: 'bg-[var(--warn)]/10',
-                  text: 'text-[var(--warn)]',
-                  border: 'border-[var(--warn)]/30',
-                  icon: null,
-                },
-                low: {
-                  label: 'Baja',
-                  bg: 'bg-[var(--success)]/10',
-                  text: 'text-[var(--success)]',
-                  border: 'border-[var(--success)]/30',
-                  icon: null,
-                },
-              };
-              const config = priorityConfig[p];
-
-              const isOverdue = t.due_date && t.due_date < new Date().toISOString().slice(0, 10);
+              const config = PRIORITY_CONFIG[p];
+              const isOverdue = t.due_date && t.due_date < todayStr;
 
               return (
                 <article
