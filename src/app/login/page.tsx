@@ -14,15 +14,20 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
 
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
   // Rate limiting
   const attemptsRef = useRef(0);
   const lockoutUntilRef = useRef<number>(0);
+  const emailRedirectTo =
+    typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setInfo(null);
 
     // Verificar lockout
     if (Date.now() < lockoutUntilRef.current) {
@@ -41,6 +46,11 @@ export default function LoginPage() {
     setLoading(false);
 
     if (error) {
+      if (error.message.toLowerCase().includes('email not confirmed')) {
+        setError('El email no esta confirmado. Puede reenviar el correo de confirmacion.');
+        return;
+      }
+
       attemptsRef.current += 1;
       if (attemptsRef.current >= MAX_ATTEMPTS) {
         lockoutUntilRef.current = Date.now() + LOCKOUT_MS;
@@ -58,6 +68,35 @@ export default function LoginPage() {
     if (data.session) {
       router.push('/');
     }
+  };
+
+  const handleResendConfirmation = async () => {
+    setError(null);
+    setInfo(null);
+
+    if (!email) {
+      setError('Ingrese su email para reenviar la confirmacion.');
+      return;
+    }
+
+    setResendLoading(true);
+
+    const { error } = await supabaseClient.auth.resend({
+      type: 'signup',
+      email,
+      options: {
+        emailRedirectTo,
+      },
+    });
+
+    setResendLoading(false);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setInfo('Correo de confirmacion reenviado. Revise su bandeja y spam.');
   };
 
   return (
@@ -93,6 +132,21 @@ export default function LoginPage() {
               {error}
             </p>
           )}
+
+          {info && (
+            <p className="text-green-700 text-sm">
+              {info}
+            </p>
+          )}
+
+          <button
+            type="button"
+            className="text-sm underline text-blue-600 text-left disabled:opacity-60"
+            disabled={resendLoading || loading}
+            onClick={handleResendConfirmation}
+          >
+            {resendLoading ? 'Reenviando...' : 'Reenviar correo de confirmacion'}
+          </button>
 
           <button
             type="submit"

@@ -16,6 +16,7 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
@@ -26,6 +27,8 @@ export default function RegisterPage() {
   // Calcular fortaleza de contraseña
   const passwordStrength = getPasswordStrength(password);
   const passwordValidation = validatePassword(password);
+  const emailRedirectTo =
+    typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -55,6 +58,9 @@ export default function RegisterPage() {
     const { data, error } = await supabaseClient.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo,
+      },
     });
 
     setLoading(false);
@@ -84,6 +90,35 @@ export default function RegisterPage() {
     if (data.session) {
       router.push('/');
     }
+  };
+
+  const handleResendConfirmation = async () => {
+    setError(null);
+    setInfo(null);
+
+    if (!email) {
+      setError('Ingrese su email para reenviar la confirmacion.');
+      return;
+    }
+
+    setResendLoading(true);
+
+    const { error } = await supabaseClient.auth.resend({
+      type: 'signup',
+      email,
+      options: {
+        emailRedirectTo,
+      },
+    });
+
+    setResendLoading(false);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setInfo('Correo de confirmacion reenviado. Revise su bandeja y spam.');
   };
 
   return (
@@ -174,6 +209,15 @@ export default function RegisterPage() {
               {info}
             </p>
           )}
+
+          <button
+            type="button"
+            className="text-sm underline text-blue-600 disabled:opacity-60"
+            disabled={resendLoading || loading}
+            onClick={handleResendConfirmation}
+          >
+            {resendLoading ? 'Reenviando...' : 'Reenviar correo de confirmacion'}
+          </button>
 
           <button
             type="submit"
