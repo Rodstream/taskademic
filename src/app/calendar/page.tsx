@@ -100,7 +100,6 @@ export default function CalendarPage() {
         .eq('user_id', user.id);
 
       if (sessionsError) {
-        console.error(sessionsError);
         if (!error) setError('No se pudieron cargar las sesiones de Pomodoro.');
       } else {
         setSessions((sessionsData ?? []) as Session[]);

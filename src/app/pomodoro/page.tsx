@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { PremiumGate } from '@/components/PremiumGate';
 import { supabaseClient } from '@/lib/supabaseClient';
 
 type Mode = 'focus' | 'break';
@@ -292,7 +293,6 @@ export default function PomodoroPage() {
         .order('due_date', { ascending: true });
 
       if (error) {
-        console.error(error);
         setError('No se pudieron cargar las tareas para el Pomodoro.');
       } else {
         const list = (data ?? []) as Task[];
@@ -412,7 +412,6 @@ export default function PomodoroPage() {
     });
 
     if (error) {
-      console.error(error);
       setError('No se pudo registrar el progreso del Pomodoro al reiniciar.');
     }
   };
@@ -422,8 +421,7 @@ export default function PomodoroPage() {
 
     try {
       await flushFocusProgress();
-    } catch (e) {
-      console.error(e);
+    } catch {
       setError('Ocurrió un error al guardar el progreso antes de reiniciar.');
     }
 
@@ -480,11 +478,9 @@ export default function PomodoroPage() {
         });
 
         if (error) {
-          console.error(error);
           setError('No se pudo registrar la sesión de Pomodoro.');
         }
-      } catch (e) {
-        console.error(e);
+      } catch {
         setError('Ocurrió un error al registrar la sesión.');
       }
     }
@@ -762,71 +758,73 @@ export default function PomodoroPage() {
       )}
 
       {/* Tarea vinculada */}
-      <section className="border border-[var(--card-border)] rounded-2xl p-6 bg-[var(--card-bg)] backdrop-blur-sm">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/15 flex items-center justify-center">
-            <svg className="w-5 h-5 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-            </svg>
-          </div>
-          <div>
-            <h2 className="font-semibold text-[var(--foreground)]">Vincular con tarea</h2>
-            <p className="text-xs text-[var(--text-muted)]">Las sesiones se registrarán asociadas a esta tarea</p>
-          </div>
-        </div>
-
-        {tasksLoading ? (
-          <div className="flex items-center justify-center py-6">
-            <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : tasks.length === 0 ? (
-          <div className="text-center py-6 border border-dashed border-[var(--card-border)] rounded-xl bg-[var(--background)]/50">
-            <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-[var(--accent)]/10 flex items-center justify-center">
-              <svg className="w-6 h-6 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+      <PremiumGate feature="pomodoro_link">
+        <section className="border border-[var(--card-border)] rounded-2xl p-6 bg-[var(--card-bg)] backdrop-blur-sm">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/15 flex items-center justify-center">
+              <svg className="w-5 h-5 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
               </svg>
             </div>
-            <p className="text-[var(--text-muted)] mb-1">No hay tareas pendientes</p>
-            <p className="text-xs text-[var(--text-muted)]">Crea una tarea desde la sección Tareas</p>
+            <div>
+              <h2 className="font-semibold text-[var(--foreground)]">Vincular con tarea</h2>
+              <p className="text-xs text-[var(--text-muted)]">Las sesiones se registrarán asociadas a esta tarea</p>
+            </div>
           </div>
-        ) : (
-          <>
-            <select
-              className="w-full border border-[var(--card-border)] rounded-xl px-4 py-3 bg-[var(--background)] text-[var(--foreground)] transition-all duration-200 mb-4"
-              value={selectedTaskId}
-              onChange={(e) => setSelectedTaskId(e.target.value)}
-            >
-              <option value="none">Sin tarea asociada</option>
-              {tasks.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                  {t.due_date ? ` (vence: ${t.due_date})` : ''}
-                </option>
-              ))}
-            </select>
 
-            {activeTask && (
-              <div className="flex items-center gap-3 p-4 rounded-xl bg-[var(--background)] border border-[var(--card-border)]">
-                <div className="w-10 h-10 rounded-xl bg-[var(--accent)] flex items-center justify-center">
-                  <svg className="w-5 h-5 text-[var(--foreground)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-[var(--foreground)] truncate">
-                    {activeTask.title}
-                  </p>
-                  {activeTask.due_date && (
-                    <p className="text-xs text-[var(--text-muted)]">
-                      Fecha límite: {new Date(activeTask.due_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </p>
-                  )}
-                </div>
+          {tasksLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : tasks.length === 0 ? (
+            <div className="text-center py-6 border border-dashed border-[var(--card-border)] rounded-xl bg-[var(--background)]/50">
+              <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-[var(--accent)]/10 flex items-center justify-center">
+                <svg className="w-6 h-6 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
               </div>
-            )}
-          </>
-        )}
-      </section>
+              <p className="text-[var(--text-muted)] mb-1">No hay tareas pendientes</p>
+              <p className="text-xs text-[var(--text-muted)]">Crea una tarea desde la sección Tareas</p>
+            </div>
+          ) : (
+            <>
+              <select
+                className="w-full border border-[var(--card-border)] rounded-xl px-4 py-3 bg-[var(--background)] text-[var(--foreground)] transition-all duration-200 mb-4"
+                value={selectedTaskId}
+                onChange={(e) => setSelectedTaskId(e.target.value)}
+              >
+                <option value="none">Sin tarea asociada</option>
+                {tasks.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title}
+                    {t.due_date ? ` (vence: ${t.due_date})` : ''}
+                  </option>
+                ))}
+              </select>
+
+              {activeTask && (
+                <div className="flex items-center gap-3 p-4 rounded-xl bg-[var(--background)] border border-[var(--card-border)]">
+                  <div className="w-10 h-10 rounded-xl bg-[var(--accent)] flex items-center justify-center">
+                    <svg className="w-5 h-5 text-[var(--foreground)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-[var(--foreground)] truncate">
+                      {activeTask.title}
+                    </p>
+                    {activeTask.due_date && (
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Fecha límite: {new Date(activeTask.due_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      </PremiumGate>
 
     </main>
   );

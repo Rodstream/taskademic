@@ -137,12 +137,10 @@ export default function HomePage() {
         ] = await Promise.all([tasksPromise, sessionsPromise]);
 
         if (tasksError) {
-          console.error(tasksError);
           throw new Error('No se pudieron cargar las tareas.');
         }
 
         if (sessionsError) {
-          console.error(sessionsError);
           throw new Error('No se pudieron cargar las sesiones de Pomodoro.');
         }
 

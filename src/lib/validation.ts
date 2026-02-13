@@ -93,6 +93,11 @@ export function validateColor(color: string): { valid: boolean; error?: string }
 /**
  * Valida la fortaleza de una contraseña
  */
+const COMMON_PASSWORDS = [
+  'password', '12345678', '123456789', 'qwerty123', 'abc12345',
+  'password1', 'iloveyou', '11111111', 'admin123', 'welcome1',
+];
+
 export function validatePassword(password: string): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
@@ -107,6 +112,12 @@ export function validatePassword(password: string): { valid: boolean; errors: st
   }
   if (!/[0-9]/.test(password)) {
     errors.push('Al menos un número');
+  }
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    errors.push('Al menos un carácter especial (!@#$%...)');
+  }
+  if (COMMON_PASSWORDS.includes(password.toLowerCase())) {
+    errors.push('Esta contraseña es muy común');
   }
 
   return {
@@ -172,11 +183,16 @@ export function validateFullName(name: string): { valid: boolean; error?: string
 }
 
 /**
- * Sanitiza un string removiendo caracteres potencialmente peligrosos
+ * Sanitiza un string codificando caracteres HTML peligrosos
  */
 export function sanitizeInput(input: string): string {
   return input
-    .replace(/[<>]/g, '') // Remover < y >
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/\//g, '&#x2F;')
     .trim();
 }
 

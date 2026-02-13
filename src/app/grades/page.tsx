@@ -211,7 +211,6 @@ export default function GradesPage() {
     setFormLoading(false);
 
     if (insertError) {
-      console.error(insertError);
       setError('No se pudo guardar la nota.');
       return;
     }
@@ -267,7 +266,6 @@ export default function GradesPage() {
     setGradeToDelete(null);
 
     if (deleteError) {
-      console.error(deleteError);
       setError('No se pudo eliminar la nota.');
       return;
     }

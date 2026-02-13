@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { usePlan } from '@/context/PlanContext';
 import { supabaseClient } from '@/lib/supabaseClient';
 import { useTheme } from '@/context/ThemeContext';
 import { useState } from 'react';
@@ -59,6 +60,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
+  const { isPremium } = usePlan();
   const { theme, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -199,9 +201,37 @@ export function Sidebar() {
           {user ? (
             <div className="border-t border-[var(--card-border)] pt-3">
               {!collapsed && (
-                <p className="text-xs opacity-80 mb-2 break-all">
-                  {user.email}
-                </p>
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-xs opacity-80 break-all flex-1">
+                    {user.email}
+                  </p>
+                  {isPremium && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--accent)] text-[var(--foreground)] shrink-0">
+                      PRO
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {collapsed && isPremium && (
+                <div className="flex justify-center mb-2">
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--accent)] text-[var(--foreground)]">
+                    PRO
+                  </span>
+                </div>
+              )}
+
+              {!isPremium && (
+                <Link
+                  href="/pricing"
+                  className="w-full px-3 py-2 mb-2 border border-[var(--accent)]/30 rounded-md bg-[var(--accent)]/10 hover:bg-[var(--accent)]/20 flex items-center gap-3 text-xs text-[var(--accent)] font-medium transition-colors"
+                  title={collapsed ? 'Mejorar plan' : undefined}
+                >
+                  <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                  {!collapsed && <span>Mejorar plan</span>}
+                </Link>
               )}
 
               <button

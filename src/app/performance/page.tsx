@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { usePlan } from '@/context/PlanContext';
 import { supabaseClient } from '@/lib/supabaseClient';
 import {
   ResponsiveContainer,
@@ -97,6 +98,7 @@ function chartFillColor(theme: string | undefined) {
 
 export default function PerformancePage() {
   const { user, loading } = useAuth();
+  const { canAccess } = usePlan();
   const router = useRouter();
   const { theme } = useTheme();
 
@@ -156,7 +158,6 @@ export default function PerformancePage() {
 
       // Procesar sesiones de Pomodoro
       if (sessionsResult.error) {
-        console.error(sessionsResult.error);
         setError('No se pudieron cargar las sesiones de Pomodoro.');
         setLoadingStats(false);
         return;
@@ -176,7 +177,6 @@ export default function PerformancePage() {
 
       // Procesar tareas
       if (tasksResult.error) {
-        console.error(tasksResult.error);
         setError('No se pudieron cargar las tareas.');
         setLoadingStats(false);
         return;
@@ -540,6 +540,31 @@ export default function PerformancePage() {
             </div>
           </section>
 
+          {!canAccess('performance_charts') && (
+            <section className="flex flex-col items-center justify-center gap-4 py-12 border border-dashed border-[var(--card-border)] rounded-2xl bg-[var(--card-bg)]/50">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent)]/5 flex items-center justify-center">
+                <svg className="w-8 h-8 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <div className="text-center max-w-md">
+                <h2 className="text-xl font-bold text-[var(--foreground)] mb-2">Gráficos de rendimiento</h2>
+                <p className="text-[var(--text-muted)] mb-4">Accede a análisis detallados de tu progreso académico con gráficos interactivos.</p>
+                <a
+                  href="/pricing"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--accent)] text-[var(--foreground)] font-semibold hover:opacity-90 transition-opacity"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                  Mejorar a Premium
+                </a>
+              </div>
+            </section>
+          )}
+
+          {canAccess('performance_charts') && (
+          <>
           {/* Gráfico: últimos 7 días */}
           <section className="border border-[var(--card-border)] rounded-2xl p-6 bg-[var(--card-bg)] backdrop-blur-sm">
             <div className="flex items-center justify-between mb-4">
@@ -942,8 +967,8 @@ export default function PerformancePage() {
                             label={({ name, percent }) => `${(name || '').toString().split(' ')[0]} ${((percent || 0) * 100).toFixed(0)}%`}
                             labelLine={{ stroke: 'var(--text-muted)', strokeWidth: 1 }}
                           >
-                            {distributionData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            {distributionData.map((entry) => (
+                              <Cell key={entry.name} fill={entry.color} />
                             ))}
                           </Pie>
                           <Tooltip
@@ -1200,6 +1225,9 @@ export default function PerformancePage() {
               </>
             )}
           </section>
+
+          </>
+          )}
 
           {/* Leyenda de colores */}
           <section className="flex flex-wrap justify-center gap-6 text-sm">

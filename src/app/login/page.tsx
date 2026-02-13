@@ -1,9 +1,12 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabaseClient } from '@/lib/supabaseClient';
+
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS = 60_000; // 1 minuto de bloqueo
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,9 +16,21 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Rate limiting
+  const attemptsRef = useRef(0);
+  const lockoutUntilRef = useRef<number>(0);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Verificar lockout
+    if (Date.now() < lockoutUntilRef.current) {
+      const secsLeft = Math.ceil((lockoutUntilRef.current - Date.now()) / 1000);
+      setError(`Demasiados intentos. Espere ${secsLeft} segundos.`);
+      return;
+    }
+
     setLoading(true);
 
     const { data, error } = await supabaseClient.auth.signInWithPassword({
@@ -26,12 +41,20 @@ export default function LoginPage() {
     setLoading(false);
 
     if (error) {
-      // Mensaje genérico para no revelar si el email existe o no
+      attemptsRef.current += 1;
+      if (attemptsRef.current >= MAX_ATTEMPTS) {
+        lockoutUntilRef.current = Date.now() + LOCKOUT_MS;
+        attemptsRef.current = 0;
+        setError('Demasiados intentos fallidos. Espere 1 minuto antes de reintentar.');
+        return;
+      }
       setError('Credenciales inválidas. Verifique su email y contraseña.');
       return;
     }
 
-    // Login correcto, redirige a home (o /tasks más adelante)
+    // Reset en login exitoso
+    attemptsRef.current = 0;
+
     if (data.session) {
       router.push('/');
     }

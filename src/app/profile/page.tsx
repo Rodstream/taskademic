@@ -80,9 +80,7 @@ export default function ProfilePage() {
         .eq('id', user.id)
         .maybeSingle();
 
-      if (error) {
-        console.error(error);
-      } else if (data) {
+      if (!error && data) {
         const p = data as Profile;
         setFullName(p.full_name ?? '');
         setAvatarUrl(p.avatar_url ?? '');
@@ -215,15 +213,43 @@ export default function ProfilePage() {
     if (!user) return;
 
     setDeleteLoading(true);
+    setErrorSecurity(null);
 
-    await supabaseClient.from('profiles').delete().eq('id', user.id);
-    await supabaseClient.rpc('delete_user', { uid: user.id });
+    try {
+      const { error: profileError } = await supabaseClient
+        .from('profiles')
+        .delete()
+        .eq('id', user.id);
 
-    setDeleteLoading(false);
-    setDeleteDialogConfirmOpen(false);
+      if (profileError) {
+        setErrorSecurity('No se pudo eliminar el perfil. Intente nuevamente.');
+        setDeleteLoading(false);
+        setDeleteDialogConfirmOpen(false);
+        return;
+      }
 
-    router.push('/');
-    router.refresh();
+      const { error: rpcError } = await supabaseClient.rpc('delete_user', {
+        uid: user.id,
+      });
+
+      if (rpcError) {
+        setErrorSecurity(
+          'Hubo un error al eliminar la cuenta. Contacte soporte si el problema persiste.',
+        );
+        setDeleteLoading(false);
+        setDeleteDialogConfirmOpen(false);
+        return;
+      }
+
+      setDeleteLoading(false);
+      setDeleteDialogConfirmOpen(false);
+      router.push('/');
+      router.refresh();
+    } catch {
+      setErrorSecurity('Error inesperado al eliminar la cuenta.');
+      setDeleteLoading(false);
+      setDeleteDialogConfirmOpen(false);
+    }
   };
 
   if (loading || (!user && !loading)) {

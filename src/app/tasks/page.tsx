@@ -6,7 +6,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { supabaseClient } from '@/lib/supabaseClient';
 import { validateTaskTitle, validateTaskDescription, validateDateFormat, sanitizeInput } from '@/lib/validation';
 import { useAuth } from '@/context/AuthContext';
+import { usePlan } from '@/context/PlanContext';
+import { getLimitMessage } from '@/lib/plans';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { PremiumGate } from '@/components/PremiumGate';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
 type Priority = 'low' | 'medium' | 'high';
@@ -49,6 +52,7 @@ type Subtask = {
 
 function TasksPageContent() {
   const { user, loading } = useAuth();
+  const { isWithinLimit, canAccess } = usePlan();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -138,12 +142,11 @@ function TasksPageContent() {
       setLoadingCourses(true);
       const { data, error } = await supabaseClient
         .from('courses')
-        .select('*')
+        .select('id, user_id, name, color')
         .eq('user_id', user.id)
         .order('name', { ascending: true });
 
       if (error) {
-        console.error(error);
         setError('No se pudieron cargar las materias.');
       } else {
         setCourses((data ?? []) as Course[]);
@@ -164,12 +167,11 @@ function TasksPageContent() {
 
       const { data: tasksData, error: tasksError } = await supabaseClient
         .from('tasks')
-        .select('*')
+        .select('id, user_id, title, description, due_date, completed, created_at, course_id, priority, tags')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (tasksError) {
-        console.error(tasksError);
         setError('Error al cargar tareas');
         setLoadingTasks(false);
         return;
@@ -183,7 +185,6 @@ function TasksPageContent() {
         .eq('user_id', user.id)
         .not('task_id', 'is', null);
 
-      if (sessionsError) console.error(sessionsError);
 
       const minutesByTask = new Map<string, number>();
       (sessionsData ?? []).forEach((s: any) => {
@@ -209,9 +210,7 @@ function TasksPageContent() {
             .select('task_id, completed')
             .in('task_id', taskIds);
 
-          if (stError) {
-            console.error(stError);
-          } else {
+          if (!stError) {
             const counts: Record<string, { total: number; done: number }> = {};
             (stData ?? []).forEach((row: any) => {
               const tid = row.task_id as string;
@@ -223,8 +222,8 @@ function TasksPageContent() {
             setSubtaskCountsByTaskId(counts);
           }
         }
-      } catch (e) {
-        console.error(e);
+      } catch {
+        // silently ignore subtask count errors
       }
 
       setLoadingTasks(false);
@@ -261,6 +260,13 @@ function TasksPageContent() {
       return;
     }
 
+    // Verificar límite de tareas activas
+    const activeTasks = tasks.filter((t) => !t.completed).length;
+    if (!isWithinLimit('active_tasks', activeTasks)) {
+      setError(getLimitMessage('active_tasks'));
+      return;
+    }
+
     const courseIdToSave =
       newTaskCourseId && newTaskCourseId !== 'none' ? newTaskCourseId : null;
 
@@ -278,11 +284,10 @@ function TasksPageContent() {
         priority: newTaskPriority,
         tags: tagsToSave,
       })
-      .select('*')
+      .select('id, user_id, title, description, due_date, completed, created_at, course_id, priority, tags')
       .single();
 
     if (error) {
-      console.error(error);
       setError('No se pudo crear la tarea');
       return;
     }
@@ -299,22 +304,34 @@ function TasksPageContent() {
   };
 
   const toggleCompleted = useCallback(async (task: TaskWithStats) => {
+    // Optimistic update: actualizar UI inmediatamente
+    const newCompleted = !task.completed;
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === task.id ? { ...t, completed: newCompleted } : t,
+      ),
+    );
+
     const { data, error } = await supabaseClient
       .from('tasks')
-      .update({ completed: !task.completed })
+      .update({ completed: newCompleted })
       .eq('id', task.id)
       .eq('user_id', user?.id as string)
-      .select('*')
+      .select('id, user_id, title, description, due_date, completed, created_at, course_id, priority, tags')
       .single();
 
     if (error) {
-      console.error(error);
+      // Revertir en caso de error
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === task.id ? { ...t, completed: task.completed } : t,
+        ),
+      );
       setError('No se pudo actualizar la tarea');
       return;
     }
 
     const updated = data as Task;
-
     setTasks((prev) =>
       prev.map((t) =>
         t.id === task.id ? { ...updated, focusMinutes: task.focusMinutes } : t,
@@ -379,13 +396,12 @@ function TasksPageContent() {
       })
       .eq('id', taskBeingEdited.id)
       .eq('user_id', user.id)
-      .select('*')
+      .select('id, user_id, title, description, due_date, completed, created_at, course_id, priority, tags')
       .single();
 
     setSavingEdit(false);
 
     if (error) {
-      console.error(error);
       setError('No se pudieron guardar los cambios de la tarea');
       return;
     }
@@ -421,7 +437,6 @@ function TasksPageContent() {
     setDeleting(false);
 
     if (error) {
-      console.error(error);
       setError('No se pudo eliminar la tarea');
       return;
     }
@@ -484,7 +499,6 @@ function TasksPageContent() {
     setClearing(false);
 
     if (error) {
-      console.error(error);
       setError('No se pudieron limpiar las tareas completadas');
       return;
     }
@@ -580,14 +594,13 @@ function TasksPageContent() {
 
     const { data, error } = await supabaseClient
       .from('task_subtasks')
-      .select('*')
+      .select('id, task_id, title, completed, created_at')
       .eq('task_id', taskId)
       .order('created_at', { ascending: true });
 
     setSubtasksLoadingByTaskId((prev) => ({ ...prev, [taskId]: false }));
 
     if (error) {
-      console.error(error);
       setError(
         'No se pudieron cargar las subtareas. Verificar tabla task_subtasks y RLS.',
       );
@@ -634,11 +647,10 @@ function TasksPageContent() {
         title: raw,
         completed: false,
       })
-      .select('*')
+      .select('id, task_id, title, completed, created_at')
       .single();
 
     if (error) {
-      console.error(error);
       setError('No se pudo crear la subtarea.');
       return;
     }
@@ -670,11 +682,10 @@ function TasksPageContent() {
       .from('task_subtasks')
       .update({ completed: !subtask.completed })
       .eq('id', subtask.id)
-      .select('*')
+      .select('id, task_id, title, completed, created_at')
       .single();
 
     if (error) {
-      console.error(error);
       setError('No se pudo actualizar la subtarea.');
       return;
     }
@@ -715,7 +726,6 @@ function TasksPageContent() {
       .eq('id', subtaskId);
 
     if (error) {
-      console.error(error);
       setError('No se pudo eliminar la subtarea.');
       return;
     }
@@ -985,16 +995,18 @@ function TasksPageContent() {
 
                 {/* Acciones */}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    type="button"
-                    onClick={() => toggleSubtasksPanel(task.id)}
-                    className={`p-1.5 rounded-lg transition-all ${isExpanded ? 'bg-[var(--accent)]/15 text-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10'}`}
-                    title="Subtareas"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                    </svg>
-                  </button>
+                  {canAccess('subtasks') && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSubtasksPanel(task.id)}
+                      className={`p-1.5 rounded-lg transition-all ${isExpanded ? 'bg-[var(--accent)]/15 text-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10'}`}
+                      title="Subtareas"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                      </svg>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => openEditTask(task)}
@@ -1260,20 +1272,33 @@ function TasksPageContent() {
               </span>
 
               {/* Botón filtros */}
-              <button
-                type="button"
-                onClick={() => setShowFilters(!showFilters)}
-                className={`p-2 rounded-xl border transition-all duration-200 ${
-                  showFilters
-                    ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
-                    : 'border-[var(--card-border)] text-[var(--text-muted)] hover:text-[var(--foreground)] hover:border-[var(--primary-soft)]'
-                }`}
-                title="Filtros avanzados"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                </svg>
-              </button>
+              {canAccess('advanced_filters') ? (
+                <button
+                  type="button"
+                  onClick={() => setShowFilters(!showFilters)}
+                  className={`p-2 rounded-xl border transition-all duration-200 ${
+                    showFilters
+                      ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                      : 'border-[var(--card-border)] text-[var(--text-muted)] hover:text-[var(--foreground)] hover:border-[var(--primary-soft)]'
+                  }`}
+                  title="Filtros avanzados"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="p-2 rounded-xl border border-[var(--card-border)] text-[var(--text-muted)] opacity-50 cursor-not-allowed"
+                  title="Filtros avanzados (Premium)"
+                  disabled
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                  </svg>
+                </button>
+              )}
 
               {/* Botón limpiar */}
               <button
@@ -1560,27 +1585,37 @@ function TasksPageContent() {
 
             <label className="flex flex-col gap-1 text-sm">
               <span>Prioridad</span>
-              <select
-                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-                value={editPriority}
-                onChange={(e) => setEditPriority(e.target.value as Priority)}
-              >
-                <option value="high">Alta</option>
-                <option value="medium">Media</option>
-                <option value="low">Baja</option>
-              </select>
+              {canAccess('priorities') ? (
+                <select
+                  className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                  value={editPriority}
+                  onChange={(e) => setEditPriority(e.target.value as Priority)}
+                >
+                  <option value="high">Alta</option>
+                  <option value="medium">Media</option>
+                  <option value="low">Baja</option>
+                </select>
+              ) : (
+                <div className="border border-[var(--card-border)] rounded-md px-2 py-1 text-[var(--text-muted)] cursor-not-allowed">
+                  Media <span className="text-[10px] text-[var(--accent)]">(Premium)</span>
+                </div>
+              )}
             </label>
 
-            <label className="flex flex-col gap-1 text-sm">
-              <span>Etiquetas (separadas por coma)</span>
-              <input
-                type="text"
-                className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-                value={editTags}
-                onChange={(e) => setEditTags(e.target.value)}
-                placeholder="Ejemplo: parcial, tp, final"
-              />
-            </label>
+            {canAccess('tags') ? (
+              <label className="flex flex-col gap-1 text-sm">
+                <span>Etiquetas (separadas por coma)</span>
+                <input
+                  type="text"
+                  className="border border-[var(--card-border)] rounded-md px-2 py-1 bg-transparent focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                  value={editTags}
+                  onChange={(e) => setEditTags(e.target.value)}
+                  placeholder="Ejemplo: parcial, tp, final"
+                />
+              </label>
+            ) : (
+              <PremiumGate feature="tags"><span /></PremiumGate>
+            )}
           </div>
         }
         confirmLabel="Guardar"
@@ -1675,28 +1710,36 @@ function TasksPageContent() {
 
                 <label className="flex flex-col gap-1.5">
                   <span className="text-xs text-[var(--text-soft)]">Prioridad</span>
-                  <select
-                    className="border border-[var(--card-border)] rounded-xl px-3 py-2.5 bg-[var(--card-bg)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
-                    value={newTaskPriority}
-                    onChange={(e) => setNewTaskPriority(e.target.value as Priority)}
-                  >
-                    <option value="high">Alta</option>
-                    <option value="medium">Media</option>
-                    <option value="low">Baja</option>
-                  </select>
+                  {canAccess('priorities') ? (
+                    <select
+                      className="border border-[var(--card-border)] rounded-xl px-3 py-2.5 bg-[var(--card-bg)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                      value={newTaskPriority}
+                      onChange={(e) => setNewTaskPriority(e.target.value as Priority)}
+                    >
+                      <option value="high">Alta</option>
+                      <option value="medium">Media</option>
+                      <option value="low">Baja</option>
+                    </select>
+                  ) : (
+                    <div className="border border-[var(--card-border)] rounded-xl px-3 py-2.5 bg-[var(--card-bg)] text-[var(--text-muted)] text-sm cursor-not-allowed">
+                      Media <span className="text-[10px] text-[var(--accent)]">(Premium)</span>
+                    </div>
+                  )}
                 </label>
               </div>
 
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs text-[var(--text-soft)]">Etiquetas (separadas por coma)</span>
-                <input
-                  type="text"
-                  className="border border-[var(--card-border)] rounded-xl px-4 py-2.5 bg-[var(--card-bg)] text-[var(--foreground)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
-                  value={newTaskTags}
-                  onChange={(e) => setNewTaskTags(e.target.value)}
-                  placeholder="parcial, tp, final..."
-                />
-              </label>
+              <PremiumGate feature="tags">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs text-[var(--text-soft)]">Etiquetas (separadas por coma)</span>
+                  <input
+                    type="text"
+                    className="border border-[var(--card-border)] rounded-xl px-4 py-2.5 bg-[var(--card-bg)] text-[var(--foreground)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                    value={newTaskTags}
+                    onChange={(e) => setNewTaskTags(e.target.value)}
+                    placeholder="parcial, tp, final..."
+                  />
+                </label>
+              </PremiumGate>
 
               {/* Footer */}
               <div className="flex justify-end gap-3 pt-2">

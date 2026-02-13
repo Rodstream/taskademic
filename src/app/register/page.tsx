@@ -1,19 +1,27 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabaseClient } from '@/lib/supabaseClient';
 import { validatePassword, getPasswordStrength } from '@/lib/validation';
 
+const MAX_REGISTER_ATTEMPTS = 3;
+const REGISTER_LOCKOUT_MS = 120_000; // 2 minutos
+
 export default function RegisterPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+
+  // Rate limiting
+  const attemptsRef = useRef(0);
+  const lockoutUntilRef = useRef<number>(0);
 
   // Calcular fortaleza de contraseña
   const passwordStrength = getPasswordStrength(password);
@@ -24,9 +32,21 @@ export default function RegisterPage() {
     setError(null);
     setInfo(null);
 
+    // Verificar lockout
+    if (Date.now() < lockoutUntilRef.current) {
+      const secsLeft = Math.ceil((lockoutUntilRef.current - Date.now()) / 1000);
+      setError(`Demasiados intentos. Espere ${secsLeft} segundos.`);
+      return;
+    }
+
     // Validar contraseña antes de enviar
     if (!passwordValidation.valid) {
       setError('La contraseña debe tener: ' + passwordValidation.errors.join(', '));
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Las contraseñas no coinciden.');
       return;
     }
 
@@ -40,6 +60,13 @@ export default function RegisterPage() {
     setLoading(false);
 
     if (error) {
+      attemptsRef.current += 1;
+      if (attemptsRef.current >= MAX_REGISTER_ATTEMPTS) {
+        lockoutUntilRef.current = Date.now() + REGISTER_LOCKOUT_MS;
+        attemptsRef.current = 0;
+        setError('Demasiados intentos. Espere 2 minutos antes de reintentar.');
+        return;
+      }
       setError(error.message);
       return;
     }
@@ -122,6 +149,18 @@ export default function RegisterPage() {
                 )}
               </div>
             )}
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span>Repetir contraseña</span>
+            <input
+              type="password"
+              className="border rounded-md px-3 py-2"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              minLength={8}
+            />
           </label>
 
           {error && (

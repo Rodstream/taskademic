@@ -3,8 +3,10 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { usePlan } from '@/context/PlanContext';
 import { supabaseClient } from '@/lib/supabaseClient';
 import { validateCourseName, validateColor } from '@/lib/validation';
+import { getLimitMessage } from '@/lib/plans';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 type Course = {
@@ -17,6 +19,7 @@ type Course = {
 
 export default function CoursesPage() {
   const { user, loading } = useAuth();
+  const { isWithinLimit } = usePlan();
   const router = useRouter();
 
   const [courses, setCourses] = useState<Course[]>([]);
@@ -44,12 +47,11 @@ export default function CoursesPage() {
 
       const { data, error } = await supabaseClient
         .from('courses')
-        .select('*')
+        .select('id, user_id, name, color, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: true });
 
       if (error) {
-        console.error(error);
         setError('No se pudieron cargar las materias.');
       } else {
         setCourses((data ?? []) as Course[]);
@@ -79,6 +81,12 @@ export default function CoursesPage() {
       return;
     }
 
+    // Verificar límite del plan
+    if (!isWithinLimit('courses', courses.length)) {
+      setError(getLimitMessage('courses'));
+      return;
+    }
+
     setError(null);
 
     const { data, error } = await supabaseClient
@@ -88,11 +96,10 @@ export default function CoursesPage() {
         name: name.trim(),
         color: color || null,
       })
-      .select('*')
+      .select('id, user_id, name, color, created_at')
       .single();
 
     if (error) {
-      console.error(error);
       setError('No se pudo crear la materia.');
       return;
     }
@@ -122,7 +129,6 @@ export default function CoursesPage() {
     setDeleting(false);
 
     if (error) {
-      console.error(error);
       setError('No se pudo eliminar la materia.');
       return;
     }
