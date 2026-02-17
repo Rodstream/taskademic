@@ -325,7 +325,7 @@ export default function HomePage() {
         </section>
 
         {/* CARACTERÍSTICAS */}
-        <section className="px-4 py-16 bg-[var(--card-bg)]/30">
+        <section id="que-permite" className="px-4 py-16 bg-[var(--card-bg)]/30">
           <div className="max-w-5xl mx-auto">
             <header className="text-center mb-12">
               <span className="inline-block px-3 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] text-xs font-semibold uppercase tracking-wider mb-4">
@@ -453,7 +453,7 @@ export default function HomePage() {
         </section>
 
         {/* ACERCA DE */}
-        <section className="px-4 py-16 bg-[var(--card-bg)]/30">
+        <section id="acerca-de" className="px-4 py-16 bg-[var(--card-bg)]/30">
           <div className="max-w-3xl mx-auto text-center">
             <span className="inline-block px-3 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] text-xs font-semibold uppercase tracking-wider mb-4">
               Acerca de
@@ -474,7 +474,7 @@ export default function HomePage() {
         </section>
 
         {/* CONTACTO */}
-        <section className="px-4 py-16">
+        <section id="contacto" className="px-4 py-16">
           <div className="max-w-xl mx-auto">
             <header className="text-center mb-8">
               <span className="inline-block px-3 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] text-xs font-semibold uppercase tracking-wider mb-4">

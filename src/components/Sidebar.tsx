@@ -40,12 +40,12 @@ const mainLinks = [
 
 const publicSections = [
   {
-    href: '/#acerca-de',
+    href: '/#que-permite',
     label: 'Que permite hacer',
     icon: <FaListUl />,
   },
   {
-    href: '/#que-permite',
+    href: '/#acerca-de',
     label: 'Acerca de',
     icon: <FaInfoCircle />,
   },
