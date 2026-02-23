@@ -30,13 +30,17 @@ import {
 
 const mainLinks = [
   { href: '/', label: 'Inicio', icon: <FaHome />, requiresAuth: false },
-  { href: '/courses', label: 'Materias', icon: <FaBook />, requiresAuth: true },
+  // Planificar
   { href: '/tasks', label: 'Tareas', icon: <FaClipboardList />, requiresAuth: true },
+  { href: '/calendar', label: 'Calendario', icon: <FaCalendarAlt />, requiresAuth: true },
+  { href: '/courses', label: 'Materias', icon: <FaBook />, requiresAuth: true },
+  // Ejecutar
+  { href: '/pomodoro', label: 'Pomodoro', icon: <FaClock />, requiresAuth: true },
+  { href: '/projects', label: 'Proyectos', icon: <FaProjectDiagram />, requiresAuth: true },
+  // Revisar
   { href: '/grades', label: 'Notas', requiresAuth: true, icon: <FaClipboardCheck /> },
   { href: '/performance', label: 'Rendimiento', icon: <FaChartBar />, requiresAuth: true },
-  { href: '/pomodoro', label: 'Pomodoro', icon: <FaClock />, requiresAuth: true },
-  { href: '/calendar', label: 'Calendario', icon: <FaCalendarAlt />, requiresAuth: true },
-  { href: '/projects', label: 'Proyectos', icon: <FaProjectDiagram />, requiresAuth: true },
+  // Cuenta
   { href: '/profile', label: 'Perfil', icon: <FaUser />, requiresAuth: true },
 ];
 
