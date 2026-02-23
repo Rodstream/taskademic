@@ -27,7 +27,7 @@ import {
   Legend,
 } from 'recharts';
 import { useTheme } from '@/context/ThemeContext';
-import { FaSortAmountDown, FaSortAmountUp, FaChartLine, FaChartBar } from 'react-icons/fa';
+import { FaSortAmountDown, FaSortAmountUp, FaChartLine, FaChartBar, FaFilePdf } from 'react-icons/fa';
 
 type PomodoroSession = {
   id: string;
@@ -455,6 +455,145 @@ export default function PerformancePage() {
     return result;
   }, [courseGrades]);
 
+  function handleExportPDF() {
+    const date = new Date().toLocaleDateString('es-AR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const gradeRows = courseAverages
+      .map(
+        (c) => `
+        <tr>
+          <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:13px">${c.courseName}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:center">${c.count}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:14px;font-weight:700;text-align:center;color:${c.average >= 7 ? '#059669' : c.average >= 4 ? '#d97706' : '#dc2626'}">${c.average.toFixed(2)}</td>
+        </tr>`
+      )
+      .join('');
+
+    const examRows = [...courseGrades]
+      .sort((a, b) => (b.exam_date ?? '').localeCompare(a.exam_date ?? ''))
+      .map(
+        (g) => `
+        <tr>
+          <td style="padding:8px 14px;border-bottom:1px solid #f0f0f0;font-size:12px">${g.exam_date ? new Date(g.exam_date + 'T00:00:00').toLocaleDateString('es-AR') : '—'}</td>
+          <td style="padding:8px 14px;border-bottom:1px solid #f0f0f0;font-size:12px">${g.courseName}</td>
+          <td style="padding:8px 14px;border-bottom:1px solid #f0f0f0;font-size:12px">${g.exam_type ?? '—'}</td>
+          <td style="padding:8px 14px;border-bottom:1px solid #f0f0f0;font-size:13px;font-weight:700;color:${g.grade >= 7 ? '#059669' : g.grade >= 4 ? '#d97706' : '#dc2626'}">${g.grade}</td>
+        </tr>`
+      )
+      .join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Reporte Académico — Taskademic</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Helvetica Neue',Arial,sans-serif;color:#1a1a2e;background:#fff;padding:48px 56px}
+    @media print{body{padding:24px 32px}}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:36px;padding-bottom:20px;border-bottom:3px solid #210440}
+    .brand{font-size:11px;color:#80499d;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+    .title{font-size:28px;font-weight:800;color:#210440;line-height:1.1}
+    .email{font-size:12px;color:#666;margin-top:4px}
+    .date-box{text-align:right;font-size:11px;color:#888;line-height:1.6}
+    .date-box strong{color:#210440;font-size:13px}
+    .section{margin-bottom:32px}
+    .sec-title{font-size:11px;font-weight:700;color:#80499d;text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px;padding-bottom:6px;border-bottom:1px solid #e8e0f5}
+    .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:4px}
+    .stat{background:#f7f3ff;border-radius:12px;padding:16px 10px;text-align:center}
+    .stat-v{font-size:26px;font-weight:800;color:#210440}
+    .stat-l{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-top:3px}
+    .summary{display:flex;gap:12px;margin-bottom:20px}
+    .sum-item{flex:1;background:#f7f3ff;border-radius:10px;padding:14px;text-align:center}
+    .sum-v{font-size:22px;font-weight:800}
+    .sum-l{font-size:9px;color:#888;text-transform:uppercase;margin-top:2px}
+    table{width:100%;border-collapse:collapse}
+    th{background:#f7f3ff;padding:10px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#555;border-bottom:1px solid #ddd}
+    th:not(:first-child){text-align:center}
+    .footer{margin-top:48px;padding-top:14px;border-top:1px solid #eee;text-align:center;font-size:10px;color:#bbb}
+  </style>
+</head>
+<body>
+  <div class="hdr">
+    <div>
+      <div class="brand">Taskademic</div>
+      <div class="title">Reporte Académico</div>
+      <div class="email">${user?.email ?? ''}</div>
+    </div>
+    <div class="date-box">
+      Generado el<br/>
+      <strong>${date}</strong>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="sec-title">Estadísticas de estudio</div>
+    <div class="stats">
+      <div class="stat"><div class="stat-v">${stats.totalPomodoros}</div><div class="stat-l">Pomodoros</div></div>
+      <div class="stat"><div class="stat-v">${stats.totalMinutesFocus}</div><div class="stat-l">Min. enfoque</div></div>
+      <div class="stat"><div class="stat-v">${stats.minutesLinkedToTasks}</div><div class="stat-l">Min. en tareas</div></div>
+      <div class="stat"><div class="stat-v">${stats.tasksCompleted}</div><div class="stat-l">Tareas compl.</div></div>
+      <div class="stat"><div class="stat-v">${stats.weekStreak}</div><div class="stat-l">Racha (días)</div></div>
+    </div>
+  </div>
+
+  ${
+    courseAverages.length > 0
+      ? `
+  <div class="section">
+    <div class="sec-title">Rendimiento académico por materia</div>
+    ${
+      generalAverage !== null
+        ? `<div class="summary">
+        <div class="sum-item">
+          <div class="sum-v" style="color:${generalAverage >= 7 ? '#059669' : generalAverage >= 4 ? '#d97706' : '#dc2626'}">${generalAverage.toFixed(2)}</div>
+          <div class="sum-l">Promedio general</div>
+        </div>
+        ${bestCourse ? `<div class="sum-item"><div class="sum-v" style="color:#059669">${bestCourse.average.toFixed(2)}</div><div class="sum-l">Mejor · ${bestCourse.courseName}</div></div>` : ''}
+        ${weakestCourse ? `<div class="sum-item"><div class="sum-v" style="color:#dc2626">${weakestCourse.average.toFixed(2)}</div><div class="sum-l">A reforzar · ${weakestCourse.courseName}</div></div>` : ''}
+      </div>`
+        : ''
+    }
+    <table>
+      <thead><tr><th>Materia</th><th>Exámenes</th><th>Promedio</th></tr></thead>
+      <tbody>${gradeRows}</tbody>
+    </table>
+  </div>`
+      : ''
+  }
+
+  ${
+    courseGrades.length > 0
+      ? `
+  <div class="section">
+    <div class="sec-title">Historial de exámenes</div>
+    <table>
+      <thead><tr><th>Fecha</th><th>Materia</th><th>Tipo</th><th>Nota</th></tr></thead>
+      <tbody>${examRows}</tbody>
+    </table>
+  </div>`
+      : ''
+  }
+
+  <div class="footer">
+    Reporte generado por Taskademic &nbsp;·&nbsp; ${date}
+  </div>
+</body>
+</html>`;
+
+    const w = window.open('', '_blank', 'width=960,height=720');
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+      w.focus();
+      setTimeout(() => w.print(), 600);
+    }
+  }
+
   if (loading || (!user && !loading)) {
     return (
       <main className="min-h-screen flex items-center justify-center">
@@ -466,13 +605,36 @@ export default function PerformancePage() {
   return (
     <main className="max-w-5xl mx-auto px-4 py-10 flex flex-col gap-8">
       {/* Header */}
-      <header className="text-center">
-        <h1 className="text-3xl font-bold mb-2 text-[var(--foreground)]">
-          Rendimiento
-        </h1>
-        <p className="text-[var(--text-muted)] max-w-md mx-auto">
-          Estadísticas de estudio y rendimiento académico
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 text-[var(--foreground)]">
+            Rendimiento
+          </h1>
+          <p className="text-[var(--text-muted)]">
+            Estadísticas de estudio y rendimiento académico
+          </p>
+        </div>
+        {canAccess('export') ? (
+          <button
+            onClick={handleExportPDF}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] hover:border-[var(--accent)] hover:bg-[var(--accent)]/10 text-sm font-medium transition-all duration-200 shrink-0"
+          >
+            <FaFilePdf className="text-[var(--danger)]" />
+            Exportar PDF
+          </button>
+        ) : (
+          <a
+            href="/pricing"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 hover:bg-[var(--accent)]/20 text-sm font-medium text-[var(--accent)] transition-all duration-200 shrink-0"
+            title="Función premium — Mejorar plan"
+          >
+            <FaFilePdf />
+            Exportar PDF
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent)] text-[var(--foreground)] font-bold">
+              PRO
+            </span>
+          </a>
+        )}
       </header>
 
       {error && (
