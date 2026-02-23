@@ -25,6 +25,7 @@ import {
   FaListUl,
   FaQuestionCircle,
   FaClipboardCheck,
+  FaProjectDiagram,
 } from 'react-icons/fa';
 
 const mainLinks = [
@@ -35,6 +36,7 @@ const mainLinks = [
   { href: '/performance', label: 'Rendimiento', icon: <FaChartBar />, requiresAuth: true },
   { href: '/pomodoro', label: 'Pomodoro', icon: <FaClock />, requiresAuth: true },
   { href: '/calendar', label: 'Calendario', icon: <FaCalendarAlt />, requiresAuth: true },
+  { href: '/projects', label: 'Proyectos', icon: <FaProjectDiagram />, requiresAuth: true },
   { href: '/profile', label: 'Perfil', icon: <FaUser />, requiresAuth: true },
 ];
 
