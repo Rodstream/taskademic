@@ -3,31 +3,36 @@
 import { FormEvent, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { supabaseClient } from '@/lib/supabaseClient';
 import { validatePassword, getPasswordStrength } from '@/lib/validation';
+import { FaEye, FaEyeSlash, FaEnvelope, FaLock, FaExclamationCircle, FaCheckCircle } from 'react-icons/fa';
 
 const MAX_REGISTER_ATTEMPTS = 3;
-const REGISTER_LOCKOUT_MS = 120_000; // 2 minutos
+const REGISTER_LOCKOUT_MS   = 120_000;
+
+const STRENGTH_COLORS = ['', 'bg-[var(--danger)]', 'bg-orange-500', 'bg-[var(--warn)]', 'bg-[var(--success)]'];
+const STRENGTH_LABELS = ['', 'Muy débil', 'Débil', 'Buena', 'Fuerte'];
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail]                   = useState('');
+  const [password, setPassword]             = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPwd, setShowPwd]               = useState(false);
+  const [showConfirm, setShowConfirm]       = useState(false);
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]             = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
+  const [error, setError]                 = useState<string | null>(null);
+  const [info, setInfo]                   = useState<string | null>(null);
 
-  // Rate limiting
-  const attemptsRef = useRef(0);
+  const attemptsRef     = useRef(0);
   const lockoutUntilRef = useRef<number>(0);
 
-  // Calcular fortaleza de contraseña
-  const passwordStrength = getPasswordStrength(password);
+  const passwordStrength   = getPasswordStrength(password);
   const passwordValidation = validatePassword(password);
-  const emailRedirectTo =
+  const emailRedirectTo    =
     typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined;
 
   const handleSubmit = async (e: FormEvent) => {
@@ -35,14 +40,12 @@ export default function RegisterPage() {
     setError(null);
     setInfo(null);
 
-    // Verificar lockout
     if (Date.now() < lockoutUntilRef.current) {
       const secsLeft = Math.ceil((lockoutUntilRef.current - Date.now()) / 1000);
-      setError(`Demasiados intentos. Espere ${secsLeft} segundos.`);
+      setError(`Demasiados intentos. Esperá ${secsLeft} segundos.`);
       return;
     }
 
-    // Validar contraseña antes de enviar
     if (!passwordValidation.valid) {
       setError('La contraseña debe tener: ' + passwordValidation.errors.join(', '));
       return;
@@ -54,15 +57,11 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
-
     const { data, error } = await supabaseClient.auth.signUp({
       email,
       password,
-      options: {
-        emailRedirectTo,
-      },
+      options: { emailRedirectTo },
     });
-
     setLoading(false);
 
     if (error) {
@@ -70,167 +69,200 @@ export default function RegisterPage() {
       if (attemptsRef.current >= MAX_REGISTER_ATTEMPTS) {
         lockoutUntilRef.current = Date.now() + REGISTER_LOCKOUT_MS;
         attemptsRef.current = 0;
-        setError('Demasiados intentos. Espere 2 minutos antes de reintentar.');
+        setError('Demasiados intentos. Esperá 2 minutos antes de reintentar.');
         return;
       }
       setError(error.message);
       return;
     }
 
-    // Dependiendo de la configuración de Supabase:
-    // - puede requerir confirmación por email
-    // - o crear la sesión directamente
     if (data.user && !data.session) {
-      setInfo(
-        'Registro correcto. Revise su correo para confirmar la cuenta antes de iniciar sesión.'
-      );
+      setInfo('Registro correcto. Revisá tu correo para confirmar la cuenta antes de iniciar sesión.');
       return;
     }
 
-    if (data.session) {
-      router.push('/');
-    }
+    if (data.session) router.push('/');
   };
 
-  const handleResendConfirmation = async () => {
+  const handleResend = async () => {
     setError(null);
     setInfo(null);
-
-    if (!email) {
-      setError('Ingrese su email para reenviar la confirmacion.');
-      return;
-    }
-
+    if (!email) { setError('Ingresá tu email para reenviar la confirmación.'); return; }
     setResendLoading(true);
-
-    const { error } = await supabaseClient.auth.resend({
-      type: 'signup',
-      email,
-      options: {
-        emailRedirectTo,
-      },
-    });
-
+    const { error } = await supabaseClient.auth.resend({ type: 'signup', email, options: { emailRedirectTo } });
     setResendLoading(false);
-
-    if (error) {
-      setError(error.message);
-      return;
-    }
-
-    setInfo('Correo de confirmacion reenviado. Revise su bandeja y spam.');
+    if (error) { setError(error.message); return; }
+    setInfo('Correo de confirmación reenviado. Revisá tu bandeja y spam.');
   };
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-4">
-      <div className="w-full max-w-md border rounded-lg p-6 shadow-sm">
-        <h1 className="text-2xl font-bold mb-4 text-center">Registrarse</h1>
+    <main className="min-h-screen flex items-center justify-center px-4 py-10 relative overflow-hidden">
+      {/* Fondo decorativo */}
+      <div className="absolute inset-0 -z-10 pointer-events-none">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[500px] bg-gradient-to-br from-[var(--accent)]/15 via-[var(--primary-soft)]/8 to-transparent rounded-full blur-3xl" />
+      </div>
 
-        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-          <label className="flex flex-col gap-1">
-            <span>Email</span>
-            <input
-              type="email"
-              className="border rounded-md px-3 py-2"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </label>
+      <div className="w-full max-w-sm flex flex-col gap-8">
+        {/* Logo + marca */}
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative">
+            <div className="absolute inset-0 bg-[var(--accent)]/25 rounded-full blur-xl scale-150" />
+            <Image src="/taskademic-logo.svg" alt="Taskademic" width={56} height={56} priority className="relative drop-shadow-md" />
+          </div>
+          <div className="text-center">
+            <p className="text-xl font-bold text-[var(--foreground)]">Taskademic</p>
+            <p className="text-sm text-[var(--text-muted)] mt-0.5">Creá tu cuenta gratis</p>
+          </div>
+        </div>
 
-          <label className="flex flex-col gap-1">
-            <span>Contraseña</span>
-            <input
-              type="password"
-              className="border rounded-md px-3 py-2"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={8}
-            />
-            {/* Indicador de fortaleza */}
-            {password && (
-              <div className="mt-2">
-                <div className="flex gap-1 mb-1">
-                  {[1, 2, 3, 4].map((level) => (
-                    <div
-                      key={level}
-                      className={`h-1 flex-1 rounded-full transition-colors ${
-                        passwordStrength >= level
-                          ? passwordStrength <= 1
-                            ? 'bg-red-500'
-                            : passwordStrength <= 2
-                            ? 'bg-orange-500'
-                            : passwordStrength <= 3
-                            ? 'bg-yellow-500'
-                            : 'bg-green-500'
-                          : 'bg-gray-200'
-                      }`}
-                    />
-                  ))}
-                </div>
-                <p className="text-xs text-gray-500">
-                  {passwordStrength <= 1 && 'Muy débil'}
-                  {passwordStrength === 2 && 'Débil'}
-                  {passwordStrength === 3 && 'Buena'}
-                  {passwordStrength >= 4 && 'Fuerte'}
-                </p>
-                {!passwordValidation.valid && (
-                  <ul className="text-xs text-red-500 mt-1 list-disc list-inside">
-                    {passwordValidation.errors.map((err, i) => (
-                      <li key={i}>{err}</li>
+        {/* Card */}
+        <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] shadow-2xl p-8 flex flex-col gap-5">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {/* Email */}
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-[var(--text-muted)]">Email</span>
+              <div className="relative">
+                <FaEnvelope className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-sm pointer-events-none" />
+                <input
+                  type="email"
+                  required
+                  autoComplete="email"
+                  placeholder="tu@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)] text-sm text-[var(--foreground)] placeholder:text-[var(--text-muted)]/60 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40 focus:border-[var(--accent)]/50 transition-colors"
+                />
+              </div>
+            </label>
+
+            {/* Contraseña */}
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-[var(--text-muted)]">Contraseña</span>
+              <div className="relative">
+                <FaLock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-sm pointer-events-none" />
+                <input
+                  type={showPwd ? 'text' : 'password'}
+                  required
+                  autoComplete="new-password"
+                  placeholder="••••••••"
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-10 pr-11 py-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)] text-sm text-[var(--foreground)] placeholder:text-[var(--text-muted)]/60 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40 focus:border-[var(--accent)]/50 transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwd((p) => !p)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--foreground)] transition-colors"
+                  tabIndex={-1}
+                  aria-label={showPwd ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                >
+                  {showPwd ? <FaEyeSlash size={15} /> : <FaEye size={15} />}
+                </button>
+              </div>
+
+              {/* Indicador de fortaleza */}
+              {password && (
+                <div className="mt-1 flex flex-col gap-1.5">
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4].map((level) => (
+                      <div
+                        key={level}
+                        className={`h-1 flex-1 rounded-full transition-colors ${
+                          passwordStrength >= level
+                            ? STRENGTH_COLORS[passwordStrength]
+                            : 'bg-[var(--card-border)]'
+                        }`}
+                      />
                     ))}
-                  </ul>
-                )}
+                  </div>
+                  <p className="text-[11px] text-[var(--text-muted)]">
+                    {STRENGTH_LABELS[passwordStrength] ?? ''}
+                  </p>
+                  {!passwordValidation.valid && (
+                    <ul className="text-[11px] text-[var(--danger)] list-disc list-inside flex flex-col gap-0.5">
+                      {passwordValidation.errors.map((err, i) => <li key={i}>{err}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </label>
+
+            {/* Repetir contraseña */}
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-[var(--text-muted)]">Repetir contraseña</span>
+              <div className="relative">
+                <FaLock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-sm pointer-events-none" />
+                <input
+                  type={showConfirm ? 'text' : 'password'}
+                  required
+                  autoComplete="new-password"
+                  placeholder="••••••••"
+                  minLength={8}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className={`w-full pl-10 pr-11 py-3 rounded-xl border bg-[var(--background)] text-sm text-[var(--foreground)] placeholder:text-[var(--text-muted)]/60 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40 transition-colors ${
+                    confirmPassword && confirmPassword !== password
+                      ? 'border-[var(--danger)]/50 focus:border-[var(--danger)]/50'
+                      : 'border-[var(--card-border)] focus:border-[var(--accent)]/50'
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm((p) => !p)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--foreground)] transition-colors"
+                  tabIndex={-1}
+                  aria-label={showConfirm ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                >
+                  {showConfirm ? <FaEyeSlash size={15} /> : <FaEye size={15} />}
+                </button>
+              </div>
+              {confirmPassword && confirmPassword !== password && (
+                <p className="text-[11px] text-[var(--danger)]">Las contraseñas no coinciden</p>
+              )}
+            </label>
+
+            {/* Error */}
+            {error && (
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-[var(--danger)]/10 border border-[var(--danger)]/20 text-xs text-[var(--danger)]">
+                <FaExclamationCircle className="shrink-0 mt-0.5" />
+                <span>{error}</span>
               </div>
             )}
-          </label>
 
-          <label className="flex flex-col gap-1">
-            <span>Repetir contraseña</span>
-            <input
-              type="password"
-              className="border rounded-md px-3 py-2"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              minLength={8}
-            />
-          </label>
+            {/* Info */}
+            {info && (
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-[var(--success)]/10 border border-[var(--success)]/20 text-xs text-[var(--success)]">
+                <FaCheckCircle className="shrink-0 mt-0.5" />
+                <span>{info}</span>
+              </div>
+            )}
 
-          {error && (
-            <p className="text-red-600 text-sm">
-              {error}
-            </p>
-          )}
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-1 w-full py-3 rounded-xl bg-[var(--accent)] text-[var(--foreground)] font-semibold text-sm hover:opacity-90 active:scale-[.98] transition-all disabled:opacity-50 shadow-sm"
+            >
+              {loading ? 'Creando cuenta…' : 'Crear cuenta'}
+            </button>
+          </form>
 
-          {info && (
-            <p className="text-green-700 text-sm">
-              {info}
-            </p>
-          )}
-
+          {/* Reenviar confirmación */}
           <button
             type="button"
-            className="text-sm underline text-blue-600 disabled:opacity-60"
+            onClick={handleResend}
             disabled={resendLoading || loading}
-            onClick={handleResendConfirmation}
+            className="text-xs text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors disabled:opacity-50 text-center"
           >
-            {resendLoading ? 'Reenviando...' : 'Reenviar correo de confirmacion'}
+            {resendLoading ? 'Reenviando…' : 'Reenviar correo de confirmación'}
           </button>
+        </div>
 
-          <button
-            type="submit"
-            className="mt-2 px-4 py-2 rounded-md border bg-black text-white disabled:opacity-60"
-            disabled={loading}
-          >
-            {loading ? 'Creando cuenta...' : 'Crear cuenta'}
-          </button>
-        </form>
-
-        <p className="mt-4 text-sm text-center">
-          ¿Ya tiene cuenta?{' '}
-          <Link href="/login" className="text-blue-600 underline">
+        {/* Link a login */}
+        <p className="text-sm text-center text-[var(--text-muted)]">
+          ¿Ya tenés cuenta?{' '}
+          <Link href="/login" className="text-[var(--accent)] font-medium hover:underline">
             Iniciar sesión
           </Link>
         </p>
