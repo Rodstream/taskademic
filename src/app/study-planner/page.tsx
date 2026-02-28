@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { supabaseClient } from '@/lib/supabaseClient';
-import { FaGraduationCap, FaPlus, FaTimes, FaCalendarAlt, FaClock } from 'react-icons/fa';
+import { FaGraduationCap, FaPlus, FaTimes, FaCalendarAlt, FaClock, FaPlay } from 'react-icons/fa';
 
 type ExamPlan = {
   id: string;
@@ -354,15 +354,38 @@ export default function StudyPlannerPage() {
 
                 {/* Daily suggestion */}
                 {!plan.isPast && plan.progressPct < 100 && (
-                  <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] bg-[var(--background)] rounded-2xl px-4 py-3 border border-[var(--card-border)]">
-                    <FaClock size={12} className="shrink-0" />
-                    <span>
-                      Sugerido:{' '}
-                      <strong className="text-[var(--foreground)]">
-                        {plan.suggestedMinPerDay} min/día
-                      </strong>{' '}
-                      para llegar a tu meta
-                    </span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] bg-[var(--background)] rounded-2xl px-4 py-3 border border-[var(--card-border)] flex-1 min-w-0">
+                      <FaClock size={12} className="shrink-0" />
+                      <span className="truncate">
+                        Sugerido:{' '}
+                        <strong className="text-[var(--foreground)]">
+                          {plan.suggestedMinPerDay} min/día
+                        </strong>{' '}
+                        para llegar a tu meta
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (typeof window !== 'undefined') {
+                          sessionStorage.setItem(
+                            'pomodoro_exam_ctx',
+                            JSON.stringify({
+                              courseId: plan.course_id,
+                              examName: plan.name,
+                              suggested: plan.suggestedMinPerDay,
+                              courseName: course?.name ?? null,
+                            }),
+                          );
+                        }
+                        router.push('/pomodoro');
+                      }}
+                      className="flex items-center gap-1.5 px-3.5 py-3 rounded-2xl bg-[var(--accent)] text-[var(--foreground)] text-xs font-semibold hover:opacity-90 active:scale-[.97] transition-all shrink-0 shadow-sm"
+                      title="Iniciar sesión Pomodoro para este examen"
+                    >
+                      <FaPlay size={9} />
+                      Pomodoro
+                    </button>
                   </div>
                 )}
 

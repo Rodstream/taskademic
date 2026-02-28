@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { PremiumGate } from '@/components/PremiumGate';
 import { supabaseClient } from '@/lib/supabaseClient';
+import { FaClock, FaGraduationCap, FaTimes } from 'react-icons/fa';
 
 type Mode = 'focus' | 'break';
 
@@ -14,6 +15,14 @@ type Task = {
   title: string;
   completed: boolean;
   due_date: string | null;
+  course_id: string | null;
+};
+
+type ExamContext = {
+  courseId: string | null;
+  examName: string;
+  suggested: number;
+  courseName: string | null;
 };
 
 const FOCUS_MINUTES_DEFAULT = 25;
@@ -62,6 +71,7 @@ export default function PomodoroPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
   const [selectedTaskId, setSelectedTaskId] = useState<string | 'none'>('none');
+  const [examContext, setExamContext] = useState<ExamContext | null>(null);
 
   const [hydrated, setHydrated] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
@@ -200,6 +210,17 @@ export default function PomodoroPage() {
     } finally {
       setHydrated(true);
     }
+
+    // Leer contexto de examen pasado desde Study Planner (se consume una sola vez)
+    try {
+      const rawCtx = sessionStorage.getItem('pomodoro_exam_ctx');
+      if (rawCtx) {
+        setExamContext(JSON.parse(rawCtx) as ExamContext);
+        sessionStorage.removeItem('pomodoro_exam_ctx');
+      }
+    } catch {
+      // ignorar si sessionStorage no está disponible
+    }
   }, [user]);
 
   // Persistir cuando no corre (cambios puntuales)
@@ -287,7 +308,7 @@ export default function PomodoroPage() {
 
       const { data, error } = await supabaseClient
         .from('tasks')
-        .select('id, title, completed, due_date')
+        .select('id, title, completed, due_date, course_id')
         .eq('user_id', user.id)
         .eq('completed', false)
         .order('due_date', { ascending: true });
@@ -351,6 +372,13 @@ export default function PomodoroPage() {
     const ss = String(remainingSeconds % 60).padStart(2, '0');
     return `${mm}:${ss}`;
   }, [remainingSeconds]);
+
+  // Tareas filtradas por materia del examen (si hay contexto activo)
+  const examFilteredTasks = useMemo(() => {
+    if (!examContext?.courseId) return tasks;
+    const filtered = tasks.filter((t) => t.course_id === examContext.courseId);
+    return filtered.length > 0 ? filtered : tasks; // fallback si no hay tareas en esa materia
+  }, [tasks, examContext]);
 
   // Progreso circular (0 a 1)
   const progress = useMemo(() => {
@@ -545,19 +573,56 @@ export default function PomodoroPage() {
   const strokeDashoffset = circleCircumference * (1 - progress);
 
   return (
-    <main className="max-w-4xl mx-auto px-4 py-10 flex flex-col gap-8">
+    <main className="max-w-4xl mx-auto px-4 py-10 flex flex-col gap-8 relative overflow-hidden">
+      {/* Fondo decorativo — cambia con el modo */}
+      <div className="absolute inset-0 -z-10 pointer-events-none" aria-hidden>
+        <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[600px] rounded-full blur-3xl transition-all duration-1000 ${
+          mode === 'focus'
+            ? 'bg-gradient-to-br from-[var(--accent)]/12 via-[var(--primary-soft)]/6 to-transparent'
+            : 'bg-gradient-to-br from-[var(--success)]/10 via-[var(--success)]/4 to-transparent'
+        }`} />
+      </div>
+
       {/* Header */}
-      <header className="text-center">
-        <h1 className="text-3xl font-bold mb-2 text-[var(--foreground)]">
-          Pomodoro
-        </h1>
-        <p className="text-[var(--text-muted)] max-w-md mx-auto">
-          Mantén el enfoque con sesiones de trabajo y descanso cronometradas
-        </p>
+      <header className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/15 flex items-center justify-center shrink-0">
+          <FaClock className="text-[var(--accent)]" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--foreground)]">Pomodoro</h1>
+          <p className="text-sm text-[var(--text-muted)]">Sesiones de enfoque y descanso cronometradas</p>
+        </div>
       </header>
 
+      {/* Banner de examen — viene de Study Planner */}
+      {examContext && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/8">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <FaGraduationCap className="text-[var(--accent)] shrink-0" size={14} />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[var(--foreground)] truncate">
+                {examContext.examName}
+              </p>
+              <p className="text-xs text-[var(--text-muted)] truncate">
+                {examContext.courseName
+                  ? `${examContext.courseName} · `
+                  : ''}
+                Meta: {examContext.suggested} min/día — las sesiones cuentan para el planificador
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setExamContext(null)}
+            className="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--foreground)] hover:bg-[var(--card-border)]/40 transition-colors"
+            aria-label="Salir del modo examen"
+          >
+            <FaTimes size={10} />
+          </button>
+        </div>
+      )}
+
       {/* Timer principal */}
-      <section className="flex flex-col items-center gap-6">
+      <section className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] shadow-xl p-8 flex flex-col items-center gap-6">
         {/* Indicador de modo */}
         <div className="flex gap-2">
           <button
@@ -613,6 +678,15 @@ export default function PomodoroPage() {
             height="280"
             className="transform -rotate-90"
           >
+            <defs>
+              <filter id="timer-glow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="5" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
             {/* Círculo de fondo */}
             <circle
               cx="140"
@@ -634,6 +708,7 @@ export default function PomodoroPage() {
               strokeDasharray={circleCircumference}
               strokeDashoffset={strokeDashoffset}
               className="transition-all duration-300"
+              filter={progress > 0 ? 'url(#timer-glow)' : undefined}
             />
           </svg>
 
@@ -731,7 +806,7 @@ export default function PomodoroPage() {
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 text-sm text-[var(--danger)] bg-[var(--danger)]/10 px-4 py-2 rounded-lg">
+          <div className="flex items-center gap-2 text-sm text-[var(--danger)] bg-[var(--danger)]/10 border border-[var(--danger)]/20 px-4 py-2.5 rounded-xl w-full max-w-sm">
             <span className="flex-1">{error}</span>
             <button onClick={() => setError(null)} aria-label="Cerrar error" className="shrink-0 hover:opacity-70">×</button>
           </div>
@@ -823,13 +898,18 @@ export default function PomodoroPage() {
             </div>
           ) : (
             <>
+              {examContext?.courseId && examFilteredTasks.length < tasks.length && (
+                <p className="text-xs text-[var(--accent)] mb-2">
+                  Mostrando tareas de <strong>{examContext.courseName ?? 'la materia'}</strong>
+                </p>
+              )}
               <select
                 className="w-full border border-[var(--card-border)] rounded-xl px-4 py-3 bg-[var(--background)] text-[var(--foreground)] transition-all duration-200 mb-4"
                 value={selectedTaskId}
                 onChange={(e) => setSelectedTaskId(e.target.value)}
               >
                 <option value="none">Sin tarea asociada</option>
-                {tasks.map((t) => (
+                {examFilteredTasks.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.title}
                     {t.due_date ? ` (vence: ${t.due_date})` : ''}
