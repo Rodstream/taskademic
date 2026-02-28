@@ -22,19 +22,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const getInitialSession = async () => {
-      const {
-        data: { session },
-      } = await supabaseClient.auth.getSession();
-      setSession(session ?? null);
-      setLoading(false);
+      try {
+        const {
+          data: { session },
+          error,
+        } = await supabaseClient.auth.getSession();
+        if (error) {
+          // Token inválido o expirado — limpiar sesión local
+          await supabaseClient.auth.signOut();
+          setSession(null);
+        } else {
+          setSession(session ?? null);
+        }
+      } catch {
+        setSession(null);
+      } finally {
+        setLoading(false);
+      }
     };
 
     getInitialSession();
 
     const {
       data: { subscription },
-    } = supabaseClient.auth.onAuthStateChange((_event, session) => {
-      setSession(session ?? null);
+    } = supabaseClient.auth.onAuthStateChange((event, session) => {
+      if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+        setSession(session);
+      } else if (event === 'SIGNED_OUT') {
+        setSession(null);
+      } else {
+        setSession(session ?? null);
+      }
     });
 
     return () => {

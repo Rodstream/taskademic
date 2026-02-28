@@ -26,6 +26,7 @@ import {
   FaQuestionCircle,
   FaClipboardCheck,
   FaProjectDiagram,
+  FaGraduationCap,
 } from 'react-icons/fa';
 
 const mainLinks = [
@@ -33,6 +34,7 @@ const mainLinks = [
   // Planificar
   { href: '/tasks', label: 'Tareas', icon: <FaClipboardList />, requiresAuth: true },
   { href: '/calendar', label: 'Calendario', icon: <FaCalendarAlt />, requiresAuth: true },
+  { href: '/study-planner', label: 'Planificador', icon: <FaGraduationCap />, requiresAuth: true },
   { href: '/courses', label: 'Materias', icon: <FaBook />, requiresAuth: true },
   // Ejecutar
   { href: '/pomodoro', label: 'Pomodoro', icon: <FaClock />, requiresAuth: true },

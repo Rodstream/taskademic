@@ -435,9 +435,21 @@ export default function PomodoroPage() {
     setLastTickAt(null);
   };
 
+  const handleApplyPreset = (focusMin: number) => {
+    setFocusMinutes(focusMin);
+    setFocusInput(String(focusMin));
+    const initialSeconds = mode === 'focus' ? focusMin * 60 : breakMinutes * 60;
+    setRemainingSeconds(initialSeconds);
+    setIsRunning(false);
+    setCycleStart(null);
+    lastTickAtRef.current = null;
+    setLastTickAt(null);
+    setError(null);
+  };
+
   const handleApplyDurations = () => {
-    const focus = parseInt(focusInput) || FOCUS_MINUTES_DEFAULT;
-    const brk = parseInt(breakInput) || BREAK_MINUTES_DEFAULT;
+    const focus = Math.max(1, Math.min(120, parseInt(focusInput) || FOCUS_MINUTES_DEFAULT));
+    const brk = Math.max(1, Math.min(60, parseInt(breakInput) || BREAK_MINUTES_DEFAULT));
 
     setFocusMinutes(focus);
     setBreakMinutes(brk);
@@ -698,10 +710,31 @@ export default function PomodoroPage() {
           </button>
         </div>
 
+        {/* Presets de duración de enfoque */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[var(--text-muted)]">Enfoque:</span>
+          {([15, 25, 45, 60] as const).map((min) => (
+            <button
+              key={min}
+              onClick={() => handleApplyPreset(min)}
+              disabled={isRunning}
+              aria-label={`Preset de ${min} minutos`}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 ${
+                focusMinutes === min
+                  ? 'bg-[var(--accent)] text-[var(--foreground)]'
+                  : 'border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-muted)] hover:text-[var(--foreground)] hover:border-[var(--primary-soft)]'
+              } ${isRunning ? 'opacity-40 cursor-not-allowed' : ''}`}
+            >
+              {min} min
+            </button>
+          ))}
+        </div>
+
         {error && (
-          <p className="text-sm text-[var(--danger)] bg-[var(--danger)]/10 px-4 py-2 rounded-lg">
-            {error}
-          </p>
+          <div className="flex items-center gap-2 text-sm text-[var(--danger)] bg-[var(--danger)]/10 px-4 py-2 rounded-lg">
+            <span className="flex-1">{error}</span>
+            <button onClick={() => setError(null)} aria-label="Cerrar error" className="shrink-0 hover:opacity-70">×</button>
+          </div>
         )}
       </section>
 
@@ -728,6 +761,7 @@ export default function PomodoroPage() {
               <input
                 type="number"
                 min={1}
+                max={120}
                 className="w-full border border-[var(--card-border)] rounded-xl px-4 py-3 bg-[var(--background)] text-[var(--foreground)] transition-all duration-200"
                 value={focusInput}
                 onChange={(e) => setFocusInput(e.target.value)}
@@ -741,6 +775,7 @@ export default function PomodoroPage() {
               <input
                 type="number"
                 min={1}
+                max={60}
                 className="w-full border border-[var(--card-border)] rounded-xl px-4 py-3 bg-[var(--background)] text-[var(--foreground)] transition-all duration-200"
                 value={breakInput}
                 onChange={(e) => setBreakInput(e.target.value)}

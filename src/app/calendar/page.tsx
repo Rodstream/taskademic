@@ -1,16 +1,20 @@
 // src/app/calendar/page.tsx
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { supabaseClient } from '@/lib/supabaseClient';
+
+type Priority = 'low' | 'medium' | 'high';
 
 type Task = {
   id: string;
   title: string;
   due_date: string | null; // YYYY-MM-DD
   completed: boolean;
+  course_id: string | null;
+  priority: Priority | null;
 };
 
 type Session = {
@@ -19,10 +23,16 @@ type Session = {
   duration_minutes: number;
 };
 
+type Course = {
+  id: string;
+  name: string;
+  color: string | null;
+};
+
 type DayInfo = {
   date: string; // YYYY-MM-DD
   dayNumber: number;
-  tasksDue: number;
+  tasks: Task[];
   minutesFocus: number;
 };
 
@@ -53,6 +63,12 @@ function getMonthMatrix(year: number, monthIndex: number): string[] {
   return result;
 }
 
+const PRIORITY_COLORS: Record<Priority, string> = {
+  high: 'var(--danger)',
+  medium: 'var(--warn)',
+  low: 'var(--success)',
+};
+
 export default function CalendarPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -63,8 +79,12 @@ export default function CalendarPage() {
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [coursesMap, setCoursesMap] = useState<Map<string, Course>>(new Map());
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<string | null>(null);
 
   // Proteger ruta
   useEffect(() => {
@@ -73,7 +93,7 @@ export default function CalendarPage() {
     }
   }, [loading, user, router]);
 
-  // Cargar tareas y sesiones del usuario
+  // Cargar tareas, sesiones y materias en paralelo
   useEffect(() => {
     if (!user) return;
 
@@ -81,28 +101,36 @@ export default function CalendarPage() {
       setLoadingData(true);
       setError(null);
 
-      const { data: tasksData, error: tasksError } = await supabaseClient
-        .from('tasks')
-        .select('id, title, due_date, completed')
-        .eq('user_id', user.id);
+      const [tasksResult, sessionsResult, coursesResult] = await Promise.all([
+        supabaseClient
+          .from('tasks')
+          .select('id, title, due_date, completed, course_id, priority')
+          .eq('user_id', user.id),
+        supabaseClient
+          .from('pomodoro_sessions')
+          .select('id, started_at, duration_minutes')
+          .eq('user_id', user.id),
+        supabaseClient
+          .from('courses')
+          .select('id, name, color')
+          .eq('user_id', user.id),
+      ]);
 
-      if (tasksError) {
+      if (tasksResult.error) {
         setError('No se pudieron cargar las tareas.');
-        return;
       } else {
-        setTasks((tasksData ?? []) as Task[]);
+        setTasks((tasksResult.data ?? []) as Task[]);
       }
-      
 
-      const { data: sessionsData, error: sessionsError } = await supabaseClient
-        .from('pomodoro_sessions')
-        .select('id, started_at, duration_minutes')
-        .eq('user_id', user.id);
+      if (!sessionsResult.error) {
+        setSessions((sessionsResult.data ?? []) as Session[]);
+      }
 
-      if (sessionsError) {
-        if (!error) setError('No se pudieron cargar las sesiones de Pomodoro.');
-      } else {
-        setSessions((sessionsData ?? []) as Session[]);
+      if (!coursesResult.error) {
+        const map = new Map<string, Course>(
+          ((coursesResult.data ?? []) as Course[]).map((c) => [c.id, c]),
+        );
+        setCoursesMap(map);
       }
 
       setLoadingData(false);
@@ -112,7 +140,7 @@ export default function CalendarPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Construir mapa de día -> info
+  // Construir mapa de día -> info (con array de tareas completo)
   const daysInfo = useMemo(() => {
     const matrix = getMonthMatrix(year, month);
     const map = new Map<string, DayInfo>();
@@ -120,23 +148,16 @@ export default function CalendarPage() {
     matrix.forEach((dateStr) => {
       if (!dateStr) return;
       const dayNumber = parseInt(dateStr.slice(8, 10), 10);
-      map.set(dateStr, {
-        date: dateStr,
-        dayNumber,
-        tasksDue: 0,
-        minutesFocus: 0,
-      });
+      map.set(dateStr, { date: dateStr, dayNumber, tasks: [], minutesFocus: 0 });
     });
 
-    // tareas según due_date
     tasks.forEach((t) => {
       if (!t.due_date) return;
       const info = map.get(t.due_date);
       if (!info) return;
-      info.tasksDue += 1;
+      info.tasks.push(t);
     });
 
-    // sesiones según fecha de inicio
     sessions.forEach((s) => {
       const dayKey = new Date(s.started_at).toISOString().slice(0, 10);
       const info = map.get(dayKey);
@@ -144,10 +165,47 @@ export default function CalendarPage() {
       info.minutesFocus += s.duration_minutes || 0;
     });
 
-    return matrix.map((dateStr) =>
-      dateStr ? map.get(dateStr)! : null,
-    );
+    return matrix.map((dateStr) => (dateStr ? map.get(dateStr)! : null));
   }, [year, month, tasks, sessions]);
+
+  // Datos del día seleccionado
+  const selectedDayTasks = useMemo(
+    () => (selectedDate ? tasks.filter((t) => t.due_date === selectedDate) : []),
+    [selectedDate, tasks],
+  );
+
+  const selectedDaySessions = useMemo(
+    () =>
+      selectedDate
+        ? sessions.filter(
+            (s) => new Date(s.started_at).toISOString().slice(0, 10) === selectedDate,
+          )
+        : [],
+    [selectedDate, sessions],
+  );
+
+  const selectedDayMinutes = selectedDaySessions.reduce(
+    (acc, s) => acc + (s.duration_minutes || 0),
+    0,
+  );
+
+  // Toggle completado de una tarea (optimista)
+  const toggleTask = useCallback(
+    async (taskId: string, current: boolean) => {
+      setToggling(taskId);
+      const { error } = await supabaseClient
+        .from('tasks')
+        .update({ completed: !current })
+        .eq('id', taskId);
+      if (!error) {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === taskId ? { ...t, completed: !current } : t)),
+        );
+      }
+      setToggling(null);
+    },
+    [],
+  );
 
   const monthLabel = new Date(year, month, 1).toLocaleString('es-AR', {
     month: 'long',
@@ -156,7 +214,7 @@ export default function CalendarPage() {
 
   const goPrevMonth = () => {
     setError(null);
-    setLoadingData(false);
+    setSelectedDate(null);
     const newMonth = month - 1;
     if (newMonth < 0) {
       setMonth(11);
@@ -168,7 +226,7 @@ export default function CalendarPage() {
 
   const goNextMonth = () => {
     setError(null);
-    setLoadingData(false);
+    setSelectedDate(null);
     const newMonth = month + 1;
     if (newMonth > 11) {
       setMonth(0);
@@ -190,12 +248,22 @@ export default function CalendarPage() {
   const todayStr = new Date().toISOString().slice(0, 10);
 
   // Stats del mes actual
-  const monthStats = useMemo(() => {
-    const totalTasks = daysInfo.filter(d => d && d.tasksDue > 0).reduce((acc, d) => acc + (d?.tasksDue || 0), 0);
-    const totalMinutes = daysInfo.filter(d => d && d.minutesFocus > 0).reduce((acc, d) => acc + (d?.minutesFocus || 0), 0);
-    const daysWithActivity = daysInfo.filter(d => d && (d.tasksDue > 0 || d.minutesFocus > 0)).length;
-    return { totalTasks, totalMinutes, daysWithActivity };
-  }, [daysInfo]);
+  const monthStats = {
+    totalTasks: daysInfo.reduce((acc, d) => acc + (d?.tasks.length ?? 0), 0),
+    totalMinutes: daysInfo.reduce((acc, d) => acc + (d?.minutesFocus ?? 0), 0),
+    daysWithActivity: daysInfo.filter(
+      (d) => d && (d.tasks.length > 0 || d.minutesFocus > 0),
+    ).length,
+  };
+
+  // Label formateado del día seleccionado
+  const selectedDateLabel = selectedDate
+    ? new Date(selectedDate + 'T12:00:00').toLocaleDateString('es-AR', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+      })
+    : '';
 
   return (
     <main className="max-w-5xl mx-auto px-4 py-10 flex flex-col gap-8">
@@ -296,21 +364,25 @@ export default function CalendarPage() {
             <div className="grid grid-cols-7 gap-2">
               {daysInfo.map((info, idx) => {
                 if (!info) {
-                  return (
-                    <div key={idx} className="aspect-square rounded-xl bg-transparent" />
-                  );
+                  return <div key={idx} className="aspect-square rounded-xl bg-transparent" />;
                 }
 
                 const isToday = info.date === todayStr;
+                const isSelected = info.date === selectedDate;
 
                 return (
                   <div
                     key={info.date}
+                    onClick={() =>
+                      setSelectedDate((prev) => (prev === info.date ? null : info.date))
+                    }
                     className={`
-                      aspect-square rounded-xl border p-2 flex flex-col transition-all duration-200
+                      aspect-square rounded-xl border p-2 flex flex-col transition-all duration-200 cursor-pointer
                       ${isToday
                         ? 'border-[var(--accent)] bg-[var(--accent)]/10 ring-2 ring-[var(--accent)]/30'
-                        : 'border-[var(--card-border)] bg-[var(--background)] hover:border-[var(--primary-soft)]/50'
+                        : isSelected
+                          ? 'border-[var(--primary-soft)] bg-[var(--primary-soft)]/10 ring-1 ring-[var(--primary-soft)]/30'
+                          : 'border-[var(--card-border)] bg-[var(--background)] hover:border-[var(--primary-soft)]/50'
                       }
                     `}
                   >
@@ -319,21 +391,35 @@ export default function CalendarPage() {
                       <span className={`text-sm font-semibold ${isToday ? 'text-[var(--accent)]' : 'text-[var(--foreground)]'}`}>
                         {info.dayNumber}
                       </span>
-                      {isToday && (
-                        <span className="w-2 h-2 rounded-full bg-[var(--accent)]" />
-                      )}
+                      {isToday && <span className="w-2 h-2 rounded-full bg-[var(--accent)]" />}
                     </div>
 
                     {/* Indicadores */}
                     <div className="flex-1 flex flex-col justify-end gap-1">
-                      {info.tasksDue > 0 && (
-                        <div className="flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
-                          <span className="text-[10px] text-[var(--accent)] font-medium">
-                            {info.tasksDue} {info.tasksDue === 1 ? 'tarea' : 'tareas'}
-                          </span>
+                      {/* Puntos de color por materia */}
+                      {info.tasks.length > 0 && (
+                        <div className="flex items-center gap-0.5 flex-wrap">
+                          {info.tasks.slice(0, 3).map((t) => {
+                            const course = t.course_id ? coursesMap.get(t.course_id) : null;
+                            return (
+                              <span
+                                key={t.id}
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{
+                                  backgroundColor: course?.color || 'var(--accent)',
+                                  opacity: t.completed ? 0.35 : 1,
+                                }}
+                              />
+                            );
+                          })}
+                          {info.tasks.length > 3 && (
+                            <span className="text-[8px] text-[var(--text-muted)] font-bold leading-none">
+                              +{info.tasks.length - 3}
+                            </span>
+                          )}
                         </div>
                       )}
+                      {/* Minutos de enfoque */}
                       {info.minutesFocus > 0 && (
                         <div className="flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" />
@@ -351,11 +437,152 @@ export default function CalendarPage() {
         )}
       </section>
 
+      {/* Panel del día seleccionado */}
+      {selectedDate && (
+        <section className="border border-[var(--card-border)] rounded-2xl bg-[var(--card-bg)] overflow-hidden">
+          {/* Header del panel */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--card-border)]">
+            <div>
+              <p className="font-semibold text-[var(--foreground)] capitalize">{selectedDateLabel}</p>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                {selectedDayTasks.length} {selectedDayTasks.length === 1 ? 'tarea' : 'tareas'}
+                {selectedDayMinutes > 0 && ` · ${selectedDayMinutes} min de enfoque`}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => router.push(`/tasks?date=${selectedDate}`)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 text-[var(--accent)] text-xs font-semibold hover:bg-[var(--accent)]/20 transition-all duration-200"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Nueva tarea
+              </button>
+              <button
+                onClick={() => setSelectedDate(null)}
+                aria-label="Cerrar panel"
+                className="p-2 rounded-xl border border-[var(--card-border)] bg-[var(--background)] text-[var(--text-muted)] hover:text-[var(--foreground)] transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Lista de tareas */}
+          <div className="px-5 py-4">
+            {selectedDayTasks.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 rounded-xl bg-[var(--background)]/60 border border-dashed border-[var(--card-border)]">
+                <svg className="w-8 h-8 text-[var(--text-muted)] mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                <p className="text-sm text-[var(--text-muted)]">Sin tareas para este día</p>
+                <button
+                  onClick={() => router.push(`/tasks?date=${selectedDate}`)}
+                  className="mt-3 text-xs text-[var(--accent)] hover:underline font-medium"
+                >
+                  Crear una tarea
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {selectedDayTasks.map((task) => {
+                  const course = task.course_id ? coursesMap.get(task.course_id) : null;
+                  const isToggling = toggling === task.id;
+
+                  return (
+                    <div
+                      key={task.id}
+                      className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-200 ${
+                        task.completed
+                          ? 'border-[var(--card-border)] bg-[var(--background)]/40 opacity-60'
+                          : 'border-[var(--card-border)] bg-[var(--background)]'
+                      }`}
+                    >
+                      {/* Checkbox */}
+                      <button
+                        onClick={() => toggleTask(task.id, task.completed)}
+                        disabled={isToggling}
+                        aria-label={task.completed ? 'Marcar como pendiente' : 'Marcar como completada'}
+                        className="shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 disabled:opacity-50"
+                        style={{
+                          borderColor: task.completed ? 'var(--success)' : 'var(--card-border)',
+                          backgroundColor: task.completed ? 'var(--success)' : 'transparent',
+                        }}
+                      >
+                        {isToggling ? (
+                          <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                        ) : task.completed ? (
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : null}
+                      </button>
+
+                      {/* Punto de color de materia */}
+                      {course && (
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: course.color || 'var(--accent)' }}
+                          title={course.name}
+                        />
+                      )}
+
+                      {/* Título */}
+                      <span
+                        className={`flex-1 text-sm font-medium min-w-0 truncate ${
+                          task.completed ? 'line-through text-[var(--text-muted)]' : 'text-[var(--foreground)]'
+                        }`}
+                      >
+                        {task.title}
+                      </span>
+
+                      {/* Badges */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {course && (
+                          <span className="text-[10px] text-[var(--text-muted)] hidden sm:block">
+                            {course.name}
+                          </span>
+                        )}
+                        {task.priority && (
+                          <span
+                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md"
+                            style={{
+                              backgroundColor: `${PRIORITY_COLORS[task.priority]}22`,
+                              color: PRIORITY_COLORS[task.priority],
+                            }}
+                          >
+                            {task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Media' : 'Baja'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Sesiones Pomodoro del día */}
+            {selectedDaySessions.length > 0 && (
+              <div className="mt-4 flex items-center gap-3 p-3 rounded-xl bg-[var(--success)]/8 border border-[var(--success)]/20">
+                <span className="w-2.5 h-2.5 rounded-full bg-[var(--success)] shrink-0" />
+                <p className="text-sm text-[var(--success)] font-medium">
+                  {selectedDayMinutes} min de enfoque · {selectedDaySessions.length}{' '}
+                  {selectedDaySessions.length === 1 ? 'sesión Pomodoro' : 'sesiones Pomodoro'}
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Leyenda */}
       <section className="flex flex-wrap justify-center gap-6 text-sm">
         <div className="flex items-center gap-2">
           <span className="w-3 h-3 rounded-full bg-[var(--accent)]" />
-          <span className="text-[var(--text-muted)]">Tareas programadas</span>
+          <span className="text-[var(--text-muted)]">Tareas (color = materia)</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-3 h-3 rounded-full bg-[var(--success)]" />

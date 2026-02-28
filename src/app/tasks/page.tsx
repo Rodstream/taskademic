@@ -76,6 +76,7 @@ function TasksPageContent() {
   const [filter, setFilter] = useState<Filter>('all');
   const [filterCourseId, setFilterCourseId] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<PriorityFilter>('all');
+  const [filterTag, setFilterTag] = useState<string>('all');
   const [dateOrder, setDateOrder] = useState<DateOrder>('nearest');
   const [showFilters, setShowFilters] = useState(false);
 
@@ -747,6 +748,13 @@ function TasksPageContent() {
     });
   };
 
+  // Todas las etiquetas únicas para el selector de filtro
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    tasks.forEach((t) => parseTags(t.tags).forEach((tag) => tagSet.add(tag)));
+    return Array.from(tagSet).sort();
+  }, [tasks]);
+
   // Aplicar filtro + ORDEN por fecha
   const filteredTasks = useMemo(() => {
     const list = tasks.filter((t) => {
@@ -760,6 +768,10 @@ function TasksPageContent() {
       if (filterPriority !== 'all') {
         const p = (t.priority ?? 'medium') as Priority;
         if (p !== filterPriority) return false;
+      }
+
+      if (filterTag !== 'all') {
+        if (!parseTags(t.tags).includes(filterTag)) return false;
       }
 
       return true;
@@ -966,12 +978,22 @@ function TasksPageContent() {
               {tagsList.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-2">
                   {tagsList.map((tag, idx) => (
-                    <span
+                    <button
                       key={`${task.id}-tag-${idx}`}
-                      className="px-2 py-0.5 rounded-full bg-[var(--primary-soft)]/10 text-[var(--primary-soft)] text-[10px] font-medium"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFilterTag((prev) => prev === tag ? 'all' : tag);
+                        setShowFilters(true);
+                      }}
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all ${
+                        filterTag === tag
+                          ? 'bg-[var(--primary-soft)] text-white'
+                          : 'bg-[var(--primary-soft)]/10 text-[var(--primary-soft)] hover:bg-[var(--primary-soft)]/20'
+                      }`}
                     >
                       #{tag}
-                    </span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -1352,13 +1374,46 @@ function TasksPageContent() {
                 <option value="farthest">Más lejana primero</option>
               </select>
 
+              {/* Filtro por etiqueta */}
+              {allTags.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs text-[var(--text-muted)]">Etiqueta:</span>
+                  <button
+                    type="button"
+                    onClick={() => setFilterTag('all')}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                      filterTag === 'all'
+                        ? 'bg-[var(--primary-soft)] text-white'
+                        : 'bg-[var(--card-border)]/40 text-[var(--text-muted)] hover:text-[var(--foreground)]'
+                    }`}
+                  >
+                    Todas
+                  </button>
+                  {allTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => setFilterTag(tag === filterTag ? 'all' : tag)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                        filterTag === tag
+                          ? 'bg-[var(--primary-soft)] text-white'
+                          : 'bg-[var(--primary-soft)]/10 text-[var(--primary-soft)] hover:bg-[var(--primary-soft)]/20'
+                      }`}
+                    >
+                      #{tag}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Indicador de filtros activos */}
-              {(filterCourseId !== 'all' || filterPriority !== 'all') && (
+              {(filterCourseId !== 'all' || filterPriority !== 'all' || filterTag !== 'all') && (
                 <button
                   type="button"
                   onClick={() => {
                     setFilterCourseId('all');
                     setFilterPriority('all');
+                    setFilterTag('all');
                   }}
                   className="text-xs text-[var(--accent)] hover:underline"
                 >
@@ -1401,18 +1456,6 @@ function TasksPageContent() {
 
           {!loadingTasks && filteredTasks.length > 0 && (
             <>
-              {/* Vencidas */}
-              {groupedTasks.overdue.length > 0 && (
-                <TaskGroup
-                  title="Vencidas"
-                  icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-                  count={groupedTasks.overdue.length}
-                  color="danger"
-                  tasks={groupedTasks.overdue}
-                  {...taskGroupProps}
-                />
-              )}
-
               {/* Hoy */}
               {groupedTasks.today.length > 0 && (
                 <TaskGroup
@@ -1457,6 +1500,18 @@ function TasksPageContent() {
                   count={groupedTasks.noDate.length}
                   color="muted"
                   tasks={groupedTasks.noDate}
+                  {...taskGroupProps}
+                />
+              )}
+
+              {/* Vencidas */}
+              {groupedTasks.overdue.length > 0 && (
+                <TaskGroup
+                  title="Vencidas"
+                  icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                  count={groupedTasks.overdue.length}
+                  color="danger"
+                  tasks={groupedTasks.overdue}
                   {...taskGroupProps}
                 />
               )}
